@@ -1,0 +1,785 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     1.  CHEQUE IMAGE WIDGET
+════════════════════════════════════════════════════════════════════════ -->
+    <t t-name="scanner_integration.ScannerImageField" owl="1">
+    <div class="o_scanner_image_field d-flex flex-column gap-2">
+
+        <t t-if="state.showCropper">
+            <div class="border rounded overflow-hidden shadow"
+                 style="background:#0d1117;">
+                <div class="d-flex align-items-center justify-content-between px-3 py-2"
+                     style="background:#161b22;color:#e6edf3;border-bottom:1px solid #30363d;">
+                    <span class="fw-semibold">
+                        <i class="fa fa-crop me-1 text-primary"/>
+                        Adjust Crop Area
+                    </span>
+                    <small style="color:#8b949e;">Drag the box to move · drag handles to resize</small>
+                </div>
+                <div class="position-relative overflow-auto"
+                     style="max-height:65vh;min-height:300px;background:#1c2128;user-select:none;">
+                    <img t-ref="cropImage"
+                         t-att-src="'data:image/png;base64,' + state.rawImage"
+                         class="d-block"
+                         style="width:100%;height:auto;max-height:none;object-fit:contain;-webkit-user-drag:none;"
+                         t-on-load="onCropImageLoad"
+                         draggable="false"
+                         alt="Raw scan"/>
+                    <div t-att-style="cropStyles.overlayTop"/>
+                    <div t-att-style="cropStyles.overlayBottom"/>
+                    <div t-att-style="cropStyles.overlayLeft"/>
+                    <div t-att-style="cropStyles.overlayRight"/>
+                    <div t-att-style="cropStyles.cropBox"
+                         t-on-mousedown.stop="onCropBoxMouseDown">
+                        <div style="position:absolute;inset:0;pointer-events:none;
+                                    background-image:linear-gradient(rgba(13,110,253,0.2) 1px,transparent 1px),
+                                                     linear-gradient(90deg,rgba(13,110,253,0.2) 1px,transparent 1px);
+                                    background-size:100% 33.33%,33.33% 100%;"/>
+                        <div style="position:absolute;top:0;left:0;width:18px;height:18px;border-top:3px solid #0d6efd;border-left:3px solid #0d6efd;pointer-events:none;"/>
+                        <div style="position:absolute;top:0;right:0;width:18px;height:18px;border-top:3px solid #0d6efd;border-right:3px solid #0d6efd;pointer-events:none;"/>
+                        <div style="position:absolute;bottom:0;left:0;width:18px;height:18px;border-bottom:3px solid #0d6efd;border-left:3px solid #0d6efd;pointer-events:none;"/>
+                        <div style="position:absolute;bottom:0;right:0;width:18px;height:18px;border-bottom:3px solid #0d6efd;border-right:3px solid #0d6efd;pointer-events:none;"/>
+                        <t t-foreach="cropHandles" t-as="handle" t-key="handle.id">
+                            <div t-att-style="getHandleStyle(handle)"
+                                 t-on-mousedown="(ev) => this.onCropHandleMouseDown(ev, handle.id)"/>
+                        </t>
+                    </div>
+                    <div class="position-absolute bottom-0 end-0 m-2 px-2 py-1 rounded"
+                         style="background:rgba(0,0,0,0.75);color:#7dd3fc;pointer-events:none;
+                                font-size:0.75rem;font-family:monospace;letter-spacing:0.03em;">
+                        <i class="fa fa-arrows-alt me-1" style="font-size:0.65rem;"/>
+                        <t t-esc="cropDimensionsLabel"/>
+                    </div>
+                </div>
+                <!-- Action bar -->
+                <div class="d-flex flex-wrap align-items-center gap-2 p-3"
+                     style="background:#161b22;border-top:1px solid #30363d;">
+                    <button class="btn btn-success" t-on-click="onApplyCrop">
+                        <i class="fa fa-check me-1"/>Apply &amp; Save Crop
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" t-on-click="onUseFullImage">
+                        <i class="fa fa-expand me-1"/>Use Full Image
+                    </button>
+                    <div class="d-flex gap-1 ms-2"
+                         style="border-left:1px solid #30363d;padding-left:0.75rem;">
+                        <button class="btn btn-sm"
+                                style="background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                                t-on-click="onRotateLeft"
+                                title="Rotate 90° counter-clockwise"
+                                onmouseover="this.style.borderColor='#7dd3fc';this.style.color='#7dd3fc'"
+                                onmouseout="this.style.borderColor='#30363d';this.style.color='#e6edf3'">
+                            <i class="fa fa-rotate-left me-1"/>Rotate Left
+                        </button>
+                        <button class="btn btn-sm"
+                                style="background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                                t-on-click="onRotateRight"
+                                title="Rotate 90° clockwise"
+                                onmouseover="this.style.borderColor='#7dd3fc';this.style.color='#7dd3fc'"
+                                onmouseout="this.style.borderColor='#30363d';this.style.color='#e6edf3'">
+                            <i class="fa fa-rotate-right me-1"/>Rotate Right
+                        </button>
+                    </div>
+                    <button class="btn btn-outline-danger btn-sm ms-auto" t-on-click="onCancelCrop">
+                        <i class="fa fa-times me-1"/>Discard
+                    </button>
+                </div>
+            </div>
+        </t>
+
+        <t t-else="">
+            <div class="border rounded overflow-hidden bg-light d-flex
+                        align-items-center justify-content-center"
+                 style="min-height:160px;max-height:320px;">
+                <t t-if="imageSrc">
+                    <img t-att-src="imageSrc"
+                         class="img-fluid"
+                         style="max-height:320px;object-fit:contain;"
+                         alt="Cheque Background"/>
+                </t>
+                <t t-else="">
+                    <div class="text-center text-muted p-4">
+                        <i class="fa fa-image fa-3x mb-2 d-block"/>
+                        <small>No cheque image</small>
+                    </div>
+                </t>
+            </div>
+        </t>
+
+        <t t-if="!isReadonly and !state.showCropper">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button class="btn btn-primary btn-sm"
+                        t-on-click="onScanClick"
+                        t-att-disabled="state.scanning ? 'disabled' : undefined">
+                    <t t-if="state.scanning">
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"/>
+                        <t t-esc="state.statusMsg or 'Scanning…'"/>
+                    </t>
+                    <t t-else="">
+                        <i class="fa fa-print me-1"/>Scan from Scanner
+                    </t>
+                </button>
+                <button class="btn btn-secondary btn-sm"
+                        t-on-click="onUploadClick"
+                        t-att-disabled="state.scanning ? 'disabled' : undefined">
+                    <i class="fa fa-upload me-1"/>Upload Image
+                </button>
+                <t t-if="imageSrc">
+                    <button class="btn btn-outline-danger btn-sm"
+                            t-on-click="onClearClick"
+                            t-att-disabled="state.scanning ? 'disabled' : undefined">
+                        <i class="fa fa-trash me-1"/>Clear
+                    </button>
+                </t>
+                <span class="ms-auto d-flex align-items-center gap-1">
+                    <i t-attf-class="fa fa-circle small
+                        {{ state.bridgeStatus === 'connected'    ? 'text-success' :
+                           state.bridgeStatus === 'disconnected' ? 'text-danger'  :
+                           'text-muted' }}"/>
+                    <small class="text-muted">
+                        Bridge
+                        <t t-if="state.bridgeStatus === 'connected'">ready</t>
+                        <t t-elif="state.bridgeStatus === 'disconnected'">offline</t>
+                        <t t-else="">…</t>
+                    </small>
+                </span>
+            </div>
+            <input type="file" t-ref="fileInput" accept="image/*" class="d-none" t-on-change="onFileChange"/>
+            <t t-if="state.statusMsg and !state.scanning">
+                <div class="alert alert-success py-1 px-2 mb-0 small d-flex align-items-center gap-1">
+                    <i class="fa fa-check-circle"/>
+                    <t t-esc="state.statusMsg"/>
+                </div>
+            </t>
+            <t t-if="state.errorMsg">
+                <div class="alert alert-danger py-1 px-2 mb-0 small">
+                    <i class="fa fa-exclamation-triangle me-1"/>
+                    <t t-esc="state.errorMsg"/>
+                    <br/>
+                    <small class="text-muted">Run <code>python scanner_bridge.py</code> on this workstation.</small>
+                </div>
+            </t>
+        </t>
+
+    </div>
+</t>
+
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         2.  PDF DOCUMENT SCANNER WIDGET
+    ════════════════════════════════════════════════════════════════════════ -->
+    <t t-name="scanner_integration.ScannerPdfField" owl="1">
+    <div class="o_scanner_pdf_field d-flex flex-column gap-2">
+
+        <t t-if="state.showCropper">
+            <div class="border rounded overflow-hidden shadow" style="background:#0d1117;">
+
+                <div class="d-flex align-items-center justify-content-between px-3 py-2"
+                     style="background:#161b22;color:#e6edf3;border-bottom:1px solid #30363d;">
+                    <span class="fw-semibold">
+                        <i class="fa fa-crop me-1 text-primary"/>
+                        <t t-if="state.cropPageIdx === -1">Crop New Page</t>
+                        <t t-else="">
+                            Crop — Page <t t-esc="state.cropPageIdx + 1"/>
+                        </t>
+                    </span>
+                    <small style="color:#8b949e;">Drag to move · handles to resize</small>
+                </div>
+
+                <div class="position-relative overflow-auto"
+                     style="max-height:65vh;min-height:300px;background:#1c2128;user-select:none;">
+
+                    <img t-ref="cropImage"
+                         t-att-src="'data:image/png;base64,' + state.rawImage"
+                         class="d-block"
+                         style="width:100%;height:auto;max-height:none;object-fit:contain;-webkit-user-drag:none;"
+                         t-on-load="onCropImageLoad"
+                         draggable="false"
+                         alt="Scan"/>
+
+                    <div t-att-style="cropStyles.overlayTop"/>
+                    <div t-att-style="cropStyles.overlayBottom"/>
+                    <div t-att-style="cropStyles.overlayLeft"/>
+                    <div t-att-style="cropStyles.overlayRight"/>
+
+                    <div t-att-style="cropStyles.cropBox"
+                         t-on-mousedown.stop="onCropBoxMouseDown">
+                        <div style="position:absolute;inset:0;pointer-events:none;
+                                    background-image:linear-gradient(rgba(13,110,253,0.2) 1px,transparent 1px),
+                                                     linear-gradient(90deg,rgba(13,110,253,0.2) 1px,transparent 1px);
+                                    background-size:100% 33.33%,33.33% 100%;"/>
+                        <div style="position:absolute;top:0;left:0;width:18px;height:18px;border-top:3px solid #0d6efd;border-left:3px solid #0d6efd;pointer-events:none;"/>
+                        <div style="position:absolute;top:0;right:0;width:18px;height:18px;border-top:3px solid #0d6efd;border-right:3px solid #0d6efd;pointer-events:none;"/>
+                        <div style="position:absolute;bottom:0;left:0;width:18px;height:18px;border-bottom:3px solid #0d6efd;border-left:3px solid #0d6efd;pointer-events:none;"/>
+                        <div style="position:absolute;bottom:0;right:0;width:18px;height:18px;border-bottom:3px solid #0d6efd;border-right:3px solid #0d6efd;pointer-events:none;"/>
+                        <t t-foreach="cropHandles" t-as="handle" t-key="handle.id">
+                            <div t-att-style="getHandleStyle(handle)"
+                                 t-on-mousedown="(ev) => this.onCropHandleMouseDown(ev, handle.id)"/>
+                        </t>
+                    </div>
+
+                    <div class="position-absolute bottom-0 end-0 m-2 px-2 py-1 rounded"
+                         style="background:rgba(0,0,0,0.75);color:#7dd3fc;pointer-events:none;
+                                font-size:0.75rem;font-family:monospace;letter-spacing:0.03em;">
+                        <i class="fa fa-arrows-alt me-1" style="font-size:0.65rem;"/>
+                        <t t-esc="cropDimensionsLabel"/>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap align-items-center gap-2 p-3"
+                     style="background:#161b22;border-top:1px solid #30363d;">
+                    <button class="btn btn-success" t-on-click="onApplyCrop">
+                        <i class="fa fa-check me-1"/>Apply Crop
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" t-on-click="onUseFullImage">
+                        <i class="fa fa-expand me-1"/>Use Full Image
+                    </button>
+                    <div class="d-flex gap-1 ms-2"
+                         style="border-left:1px solid #30363d;padding-left:0.75rem;">
+                        <button class="btn btn-sm"
+                                style="background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                                t-on-click="onRotateLeft"
+                                title="Rotate 90° counter-clockwise"
+                                onmouseover="this.style.borderColor='#7dd3fc';this.style.color='#7dd3fc'"
+                                onmouseout="this.style.borderColor='#30363d';this.style.color='#e6edf3'">
+                            <i class="fa fa-rotate-left me-1"/>Rotate Left
+                        </button>
+                        <button class="btn btn-sm"
+                                style="background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                                t-on-click="onRotateRight"
+                                title="Rotate 90° clockwise"
+                                onmouseover="this.style.borderColor='#7dd3fc';this.style.color='#7dd3fc'"
+                                onmouseout="this.style.borderColor='#30363d';this.style.color='#e6edf3'">
+                            <i class="fa fa-rotate-right me-1"/>Rotate Right
+                        </button>
+                    </div>
+                    <button class="btn btn-outline-danger btn-sm ms-auto" t-on-click="onCancelCrop">
+                        <i class="fa fa-times me-1"/>Discard
+                    </button>
+                </div>
+
+            </div>
+        </t>
+
+
+        <t t-else="">
+
+            <t t-if="currentAttachments.length > 0">
+                <div class="border rounded overflow-hidden"
+                     style="background:#0d1117;border-color:#30363d!important;">
+
+                    <div class="d-flex align-items-center px-3 py-2"
+                         style="background:#161b22;border-bottom:1px solid #30363d;color:#e6edf3;">
+                        <i class="fa fa-paperclip me-2" style="color:#7dd3fc;"/>
+                        <span class="fw-semibold small">
+                            <t t-esc="currentAttachments.length"/>
+                            saved document
+                            <t t-if="currentAttachments.length !== 1">s</t>
+                        </span>
+                    </div>
+                    <div class="d-flex flex-column gap-1 p-3">
+                        <t t-foreach="currentAttachments" t-as="att" t-key="att.id">
+
+                            <div class="d-flex align-items-center gap-2"
+                                 style="background:#ffffff;
+                                        border:1px solid #d0d7de;
+                                        border-radius:6px;
+                                        padding:6px 10px;
+                                        min-height:38px;">
+
+                                <div style="position:relative;width:24px;height:30px;flex-shrink:0;">
+                                    <div style="position:absolute;inset:0;
+                                                background:#f6f8fa;
+                                                border:1px solid #d0d7de;
+                                                border-radius:2px 6px 2px 2px;
+                                                overflow:hidden;">
+                                        <div style="position:absolute;top:0;left:0;right:0;height:9px;
+                                                    background:#b91c1c;"/>
+                                        <div style="position:absolute;top:1px;left:0;right:0;
+                                                    text-align:center;color:white;font-weight:800;
+                                                    font-size:0.38rem;letter-spacing:0.05em;
+                                                    font-family:sans-serif;">
+                                            PDF
+                                        </div>
+                                        <div style="position:absolute;top:13px;left:3px;right:3px;height:1px;background:#d0d7de;"/>
+                                        <div style="position:absolute;top:17px;left:3px;right:3px;height:1px;background:#d0d7de;"/>
+                                        <div style="position:absolute;top:21px;left:3px;right:6px;height:1px;background:#d0d7de;"/>
+                                    </div>
+                                    <div style="position:absolute;top:0;right:0;width:6px;height:6px;
+                                                background:#ffffff;
+                                                clip-path:polygon(100% 0,100% 100%,0 0);"/>
+                                    <div style="position:absolute;top:0;right:0;width:6px;height:6px;
+                                                background:#b6bec8;
+                                                clip-path:polygon(0 0,100% 100%,0 100%);"/>
+                                </div>
+
+                                <span style="color:#8c959f;font-size:0.65rem;
+                                             font-family:monospace;flex-shrink:0;
+                                             min-width:18px;text-align:right;">
+                                    <t t-esc="att_index + 1"/>
+                                </span>
+
+                                <span style="color:#24292f;font-size:0.75rem;
+                                             flex:1;overflow:hidden;
+                                             white-space:nowrap;
+                                             text-overflow:ellipsis;"
+                                      t-att-title="att.name">
+                                    <t t-esc="att.name"/>
+                                </span>
+
+                                <span title="Upload date"
+                                      style="color:#57606a;font-size:0.65rem;
+                                             font-family:monospace;flex-shrink:0;
+                                             white-space:nowrap;">
+                                    <t t-esc="att.create_date and att.create_date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })"/>
+                                </span>
+
+                                <button title="Preview"
+                                        t-on-click="() => this.onPreviewAttachment(att.id, att.name)"
+                                        style="display:inline-flex;align-items:center;justify-content:center;
+                                               width:28px;height:24px;border-radius:4px;
+                                               background:transparent;color:#57606a;
+                                               border:1px solid #d0d7de;cursor:pointer;
+                                               font-size:0.7rem;flex-shrink:0;"
+                                        onmouseover="this.style.color='#0969da';this.style.borderColor='#0969da'"
+                                        onmouseout="this.style.color='#57606a';this.style.borderColor='#d0d7de'">
+                                    <i class="fa fa-eye"/>
+                                </button>
+
+                                <a t-attf-href="/web/content/#{att.id}?download=true"
+                                   title="Download"
+                                   style="display:inline-flex;align-items:center;justify-content:center;
+                                          width:28px;height:24px;border-radius:4px;
+                                          background:transparent;color:#57606a;
+                                          border:1px solid #d0d7de;text-decoration:none;
+                                          font-size:0.7rem;flex-shrink:0;"
+                                   onmouseover="this.style.color='#1a7f37';this.style.borderColor='#1a7f37'"
+                                   onmouseout="this.style.color='#57606a';this.style.borderColor='#d0d7de'">
+                                    <i class="fa fa-download"/>
+                                </a>
+
+                                <t t-if="!isReadonly">
+                                    <button title="Remove from record"
+                                            t-on-click="() => this.onRemoveAttachment(att.id)"
+                                            style="display:inline-flex;align-items:center;justify-content:center;
+                                                   width:28px;height:24px;border-radius:4px;
+                                                   background:transparent;color:#cf222e;
+                                                   border:1px solid #d0d7de;cursor:pointer;
+                                                   font-size:0.7rem;flex-shrink:0;"
+                                            onmouseover="this.style.borderColor='#cf222e'"
+                                            onmouseout="this.style.borderColor='#d0d7de'">
+                                        <i class="fa fa-times"/>
+                                    </button>
+                                </t>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+            </t>
+
+
+            <t t-if="state.pages.length > 0">
+                <div class="border rounded overflow-hidden"
+                     style="background:#0d1117;border-color:#30363d!important;">
+
+                    <div class="d-flex align-items-center px-3 py-2"
+                         style="background:#161b22;border-bottom:1px solid #30363d;color:#e6edf3;">
+                        <i class="fa fa-files-o me-2" style="color:#7dd3fc;"/>
+                        <span class="fw-semibold small">
+                            <t t-esc="state.pages.length"/>
+                            <t t-if="state.pages.length === 1"> Page</t>
+                            <t t-else=""> Pages</t>
+                            — ready to save as PDF
+                        </span>
+                        <small class="ms-auto" style="color:#8b949e;">
+                            Click a thumbnail to crop
+                        </small>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-3 p-3">
+                        <t t-foreach="state.pages" t-as="page" t-key="page.id">
+                            <div class="d-flex flex-column gap-1" style="width:96px;">
+
+                                <div class="position-relative border rounded overflow-hidden"
+                                     style="height:128px;background:#1c2128;
+                                            border-color:#30363d!important;cursor:pointer;"
+                                     t-on-click="() => this.onCropPage(page_index)"
+                                     title="Click to crop this page">
+                                    <img t-att-src="'data:image/jpeg;base64,' + page.thumb"
+                                         class="w-100 h-100"
+                                         style="object-fit:contain;"
+                                         t-att-alt="'Page ' + (page_index + 1)"/>
+                                    <div class="position-absolute top-0 start-0 m-1 px-1 rounded"
+                                         style="background:rgba(13,110,253,0.9);color:white;
+                                                font-size:0.6rem;font-family:monospace;line-height:1.5;">
+                                        <t t-esc="page_index + 1"/>
+                                    </div>
+                                    <div class="position-absolute top-0 start-0 w-100 h-100
+                                                d-flex align-items-center justify-content-center"
+                                         style="background:rgba(13,110,253,0.0);
+                                                transition:background 0.15s;"
+                                         onmouseover="this.style.background='rgba(13,110,253,0.3)'"
+                                         onmouseout="this.style.background='rgba(13,110,253,0.0)'">
+                                        <i class="fa fa-crop fa-lg text-white"
+                                           style="opacity:0;transition:opacity 0.15s;"
+                                           onmouseover="this.style.opacity='1'"
+                                           onmouseout="this.style.opacity='0'"/>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex gap-1">
+                                    <button class="btn p-0 flex-grow-1"
+                                            style="font-size:0.7rem;background:#21262d;
+                                                   color:#8b949e;border:1px solid #30363d;
+                                                   line-height:1.6;"
+                                            t-att-disabled="page_index === 0 ? 'disabled' : undefined"
+                                            t-on-click.stop="() => this.onMovePage(page_index, -1)"
+                                            title="Move left">&#9664;</button>
+                                    <button class="btn p-0 flex-grow-1"
+                                            style="font-size:0.7rem;background:#21262d;
+                                                   color:#f85149;border:1px solid #30363d;
+                                                   line-height:1.6;"
+                                            t-on-click.stop="() => this.onRemovePage(page_index)"
+                                            title="Remove page">&#x2715;</button>
+                                    <button class="btn p-0 flex-grow-1"
+                                            style="font-size:0.7rem;background:#21262d;
+                                                   color:#8b949e;border:1px solid #30363d;
+                                                   line-height:1.6;"
+                                            t-att-disabled="page_index === state.pages.length - 1 ? 'disabled' : undefined"
+                                            t-on-click.stop="() => this.onMovePage(page_index, 1)"
+                                            title="Move right">&#9654;</button>
+                                </div>
+
+                            </div>
+                        </t>
+                    </div>
+                </div>
+            </t>
+
+
+            <t t-if="state.pages.length === 0 and currentAttachments.length === 0">
+                <div class="border rounded d-flex align-items-center justify-content-center"
+                     style="min-height:140px;background:#f8f9fa;border-style:dashed!important;">
+                    <div class="text-center text-muted p-4">
+                        <i class="fa fa-file-pdf-o fa-3x mb-2 d-block"
+                           style="opacity:0.3;color:#dc3545;"/>
+                        <small>No document yet — scan pages, upload images to build a PDF, or upload a file directly</small>
+                    </div>
+                </div>
+            </t>
+
+        </t>
+
+
+        <t t-if="!isReadonly and !state.showCropper">
+
+            <div class="d-flex flex-wrap align-items-center gap-2">
+
+                <button class="btn btn-primary btn-sm"
+                        t-on-click="onScanFlatbed"
+                        t-att-disabled="state.scanning or state.saving or state.uploading ? 'disabled' : undefined">
+                    <t t-if="state.scanning and state.scanSource === 'flatbed'">
+                        <span class="spinner-border spinner-border-sm me-1" role="status"/>
+                        <t t-esc="state.statusMsg or 'Scanning…'"/>
+                    </t>
+                    <t t-else="">
+                        <i class="fa fa-print me-1"/>Add Page
+                    </t>
+                </button>
+
+                <button class="btn btn-sm text-white"
+                        style="background:#0e7490;border-color:#0e7490;"
+                        t-on-click="onScanAdf"
+                        t-att-disabled="state.scanning or state.saving or state.uploading ? 'disabled' : undefined">
+                    <t t-if="state.scanning and state.scanSource === 'adf'">
+                        <span class="spinner-border spinner-border-sm me-1" role="status"/>
+                        <t t-esc="state.statusMsg or 'Scanning feeder…'"/>
+                    </t>
+                    <t t-else="">
+                        <i class="fa fa-copy me-1"/>Scan All (ADF)
+                    </t>
+                </button>
+
+                <button class="btn btn-secondary btn-sm"
+                        t-on-click="onUploadClick"
+                        t-att-disabled="state.scanning or state.saving or state.uploading ? 'disabled' : undefined">
+                    <i class="fa fa-upload me-1"/>Images
+                </button>
+
+                <button class="btn btn-sm text-white"
+                        style="background:#6f42c1;border-color:#6f42c1;"
+                        t-on-click="onDirectUploadClick"
+                        t-att-disabled="state.scanning or state.saving or state.uploading ? 'disabled' : undefined">
+                    <t t-if="state.uploading">
+                        <span class="spinner-border spinner-border-sm me-1" role="status"/>
+                        <t t-esc="state.statusMsg or 'Uploading…'"/>
+                    </t>
+                    <t t-else="">
+                        <i class="fa fa-file-o me-1"/>Upload File
+                    </t>
+                </button>
+
+                <t t-if="state.pages.length > 0">
+                    <button class="btn btn-success btn-sm"
+                            t-on-click="onSavePdf"
+                            t-att-disabled="state.scanning or state.saving or state.uploading ? 'disabled' : undefined">
+                        <t t-if="state.saving">
+                            <span class="spinner-border spinner-border-sm me-1" role="status"/>
+                            Saving…
+                        </t>
+                        <t t-else="">
+                            <i class="fa fa-file-pdf-o me-1"/>Save as PDF
+                            <span class="badge bg-light text-success ms-1"
+                                  style="font-size:0.65rem;">
+                                <t t-esc="state.pages.length"/>p
+                            </span>
+                        </t>
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm"
+                            t-on-click="onClearPages"
+                            t-att-disabled="state.scanning or state.saving or state.uploading ? 'disabled' : undefined">
+                        <i class="fa fa-trash me-1"/>Clear
+                    </button>
+                </t>
+
+                <span class="ms-auto d-flex align-items-center gap-1">
+                    <i t-attf-class="fa fa-circle small
+                        {{ state.bridgeStatus === 'connected'    ? 'text-success' :
+                           state.bridgeStatus === 'disconnected' ? 'text-danger'  :
+                           'text-muted' }}"/>
+                    <small class="text-muted">
+                        Bridge
+                        <t t-if="state.bridgeStatus === 'connected'">ready</t>
+                        <t t-elif="state.bridgeStatus === 'disconnected'">offline</t>
+                        <t t-else="">…</t>
+                    </small>
+                </span>
+            </div>
+
+            <input type="file"
+                   t-ref="fileInput"
+                   accept="image/*"
+                   multiple="multiple"
+                   class="d-none"
+                   t-on-change="onFileChange"/>
+            <input type="file"
+                   t-ref="fileDirect"
+                   multiple="multiple"
+                   class="d-none"
+                   t-on-change="onDirectFileChange"/>
+
+            <t t-if="state.statusMsg and !state.scanning and !state.saving and !state.uploading">
+                <div class="alert alert-success py-1 px-2 mb-0 small d-flex align-items-center gap-1">
+                    <i class="fa fa-check-circle"/>
+                    <t t-esc="state.statusMsg"/>
+                </div>
+            </t>
+            <t t-if="state.errorMsg">
+                <div class="alert alert-danger py-1 px-2 mb-0 small">
+                    <i class="fa fa-exclamation-triangle me-1"/>
+                    <t t-esc="state.errorMsg"/>
+                    <br/>
+                    <small class="text-muted">
+                        Run <code>python scanner_bridge.py</code> on this workstation.
+                    </small>
+                </div>
+            </t>
+
+        </t>
+
+        <t t-if="state.showPreview and previewUrl">
+            <div style="position:fixed;inset:0;z-index:9999;
+                        background:rgba(0,0,0,0.82);
+                        display:flex;align-items:center;justify-content:center;"
+                 t-on-click="onClosePreview">
+
+                <div style="background:#1c2128;border:1px solid #30363d;border-radius:8px;
+                             display:flex;flex-direction:column;
+                             width:88vw;max-width:1040px;height:90vh;
+                             box-shadow:0 24px 64px rgba(0,0,0,0.7);overflow:hidden;"
+                     t-on-click.stop="">
+
+                    <div style="display:flex;align-items:center;gap:10px;
+                                padding:10px 16px;
+                                background:#161b22;border-bottom:1px solid #30363d;
+                                flex-shrink:0;">
+
+                        <i class="fa fa-file-pdf-o" style="color:#f85149;font-size:1.1rem;"/>
+                        <span style="color:#e6edf3;font-weight:600;font-size:0.9rem;
+                                     flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                              t-esc="state.previewFilename"/>
+
+                        <span style="background:#21262d;color:#7dd3fc;border:1px solid #30363d;
+                                     border-radius:20px;padding:1px 10px;font-size:0.72rem;
+                                     white-space:nowrap;flex-shrink:0;">
+                            <i class="fa fa-file-text-o me-1"/>PDF
+                        </span>
+
+                        <a t-att-href="previewUrl"
+                           target="_blank"
+                           title="Open in new tab"
+                           style="display:inline-flex;align-items:center;gap:4px;
+                                  padding:4px 10px;border-radius:5px;font-size:0.8rem;
+                                  background:#21262d;color:#8b949e;border:1px solid #30363d;
+                                  text-decoration:none;flex-shrink:0;"
+                           onmouseover="this.style.color='#e6edf3'"
+                           onmouseout="this.style.color='#8b949e'">
+                            <i class="fa fa-external-link"/>
+                        </a>
+
+                        <a t-att-href="downloadUrl"
+                           title="Download"
+                           style="display:inline-flex;align-items:center;gap:4px;
+                                  padding:4px 10px;border-radius:5px;font-size:0.8rem;
+                                  background:#21262d;color:#8b949e;border:1px solid #30363d;
+                                  text-decoration:none;flex-shrink:0;"
+                           onmouseover="this.style.color='#e6edf3'"
+                           onmouseout="this.style.color='#8b949e'">
+                            <i class="fa fa-download"/>
+                        </a>
+
+                        <button title="Close preview"
+                                t-on-click="onClosePreview"
+                                style="display:inline-flex;align-items:center;justify-content:center;
+                                       width:30px;height:30px;border-radius:5px;border:none;
+                                       background:#21262d;color:#8b949e;cursor:pointer;
+                                       font-size:1rem;flex-shrink:0;"
+                                onmouseover="this.style.background='#f85149';this.style.color='white'"
+                                onmouseout="this.style.background='#21262d';this.style.color='#8b949e'">
+                            <i class="fa fa-times"/>
+                        </button>
+                    </div>
+
+                    <div style="flex:1;overflow:hidden;background:#0d1117;">
+                        <iframe t-att-src="previewUrl"
+                                style="width:100%;height:100%;border:none;display:block;"
+                                title="PDF Preview"/>
+                    </div>
+
+                    <div style="padding:6px 16px;background:#161b22;
+                                border-top:1px solid #30363d;flex-shrink:0;
+                                display:flex;align-items:center;justify-content:space-between;">
+                        <small style="color:#8b949e;">
+                            <i class="fa fa-info-circle me-1"/>
+                            Click outside the panel or press &#x2715; to close
+                        </small>
+                        <small style="color:#8b949e;">
+                            PDF viewer provided by your browser
+                        </small>
+                    </div>
+
+                </div>
+            </div>
+        </t>
+
+        <!-- ✅ FIX Bug 1: Both dialogs moved INSIDE the root <div>              -->
+        <!-- They use position:fixed so they still overlay the full screen.      -->
+
+        <t t-if="state.showScannerDialog">
+            <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;"
+                 t-on-click="onScannerCancel"/>
+
+            <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+                    z-index:1056;width:460px;max-width:95vw;
+                    background:#fff;border-radius:8px;
+                    box-shadow:0 8px 32px rgba(0,0,0,0.25);padding:24px;">
+
+                <h5 class="mb-3 fw-semibold">
+                    <i class="fa fa-print me-2 text-primary"/>Select Scanner
+                </h5>
+
+                <t t-if="state.loadingScanners">
+                    <div class="d-flex align-items-center gap-2 text-muted py-3">
+                        <i class="fa fa-spinner fa-spin"/>
+                        <span>Detecting available scanners…</span>
+                    </div>
+                </t>
+
+                <t t-else="">
+                    <div class="list-group mb-3">
+                        <button type="button"
+                                class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                                t-on-click="() => onScannerConfirm(null)">
+                            <i class="fa fa-star text-warning"/>
+                            <div>
+                                <div class="fw-semibold">Default Scanner</div>
+                                <small class="text-muted">Use the system default device</small>
+                            </div>
+                        </button>
+
+                        <t t-foreach="state.availableScanners" t-as="scanner" t-key="scanner.name">
+                            <button type="button"
+                                    class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                                    t-on-click="() => onScannerConfirm(scanner.name)">
+                                <i class="fa fa-print text-secondary"/>
+                                <div>
+                                    <div class="fw-semibold">
+                                        <t t-esc="scanner.display or scanner.name"/>
+                                    </div>
+                                    <small class="text-muted font-monospace">
+                                        <t t-esc="scanner.name"/>
+                                    </small>
+                                </div>
+                            </button>
+                        </t>
+
+                        <t t-if="state.availableScanners.length === 0">
+                            <div class="list-group-item text-muted fst-italic">
+                                <i class="fa fa-info-circle me-1"/>
+                                No additional scanners detected — Default will be used.
+                            </div>
+                        </t>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-secondary" t-on-click="onScannerCancel">
+                            Cancel
+                        </button>
+                    </div>
+                </t>
+            </div>
+        </t>
+
+        <t t-if="state.showFilenameDialog">
+            <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1055;"
+                 t-on-click="onFilenameCancel"/>
+            <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+                z-index:1056;width:420px;max-width:95vw;
+                background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.25);
+                padding:24px;">
+                <h5 class="mb-3 fw-semibold">
+                    <i class="fa fa-file-pdf-o me-2 text-danger"/>Save as PDF
+                </h5>
+
+                <label class="form-label">File name</label>
+                <div class="input-group mb-1">
+                    <input type="text"
+                           class="form-control"
+                           t-model="state.pendingFilename"
+                           t-on-keydown="(ev) => ev.key === 'Enter' and onFilenameConfirm()"
+                           placeholder="e.g. Invoice_2024"
+                           autofocus="autofocus"/>
+                    <span class="input-group-text text-muted">.pdf</span>
+                </div>
+                <div class="form-text text-muted mb-4">
+                    The <code>.pdf</code> extension is added automatically.
+                </div>
+
+                <div class="d-flex gap-2 justify-content-end">
+                    <button class="btn btn-secondary" t-on-click="onFilenameCancel">
+                        Cancel
+                    </button>
+                    <button class="btn btn-success"
+                            t-att-disabled="!state.pendingFilename.trim() ? 'disabled' : undefined"
+                            t-on-click="onFilenameConfirm">
+                        <i class="fa fa-save me-1"/>Save PDF
+                    </button>
+                </div>
+            </div>
+        </t>
+
+    </div>
+</t>
+
+</templates>
