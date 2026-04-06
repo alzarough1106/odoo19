@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+.idea/
+*.zip
+.DS_Store
+*.log
+*.conf
