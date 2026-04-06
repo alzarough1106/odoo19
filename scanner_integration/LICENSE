@@ -1,0 +1,24 @@
+##############################################################################
+#
+#    Scanner Integration Module
+#    Copyright (C) 2026 alzarough1106 <alzarough@gmail.com>
+#
+#    Odoo Proprietary License v1.0
+#
+#    This software and associated files (the "Software") may only be used
+#    (executed, modified, executed after modifications) if you have purchased
+#    a valid license from alzarough1106.
+#
+#    You are NOT permitted to:
+#    - Copy, modify, merge or distribute this Software
+#    - Use this Software for providing services to third parties
+#    - Sublicense, sell, resell or transfer the Software
+#    - Use scanner_bridge in any other application or project
+#
+#    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+#    THE AUTHOR SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#    LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+#
+#    For licensing inquiries contact: alzarough@gmail.com
+#
+##############################################################################

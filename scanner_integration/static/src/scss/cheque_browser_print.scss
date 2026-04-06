@@ -1,0 +1,88 @@
+.o_cheque_browser_print {
+    display        : flex;
+    flex-direction : column;
+    height         : 100%;
+    min-height     : 620px;
+    background     : #fff;
+
+    // ── Header ──────────────────────────────────────────────────────────────
+    .o_cheque_bp_header {
+        background  : #6f5499;   // Odoo purple — matches QZ Tray dialog header
+        color       : #fff;
+        padding     : 14px 20px;
+        font-size   : 1.1rem;
+        flex-shrink : 0;
+
+        .o_cheque_bp_subtitle {
+            font-size   : 0.85rem;
+            opacity     : 0.8;
+            margin-left : 6px;
+        }
+    }
+
+    // ── Body ─────────────────────────────────────────────────────────────────
+    .o_cheque_bp_body {
+        flex           : 1;
+        display        : flex;
+        flex-direction : column;
+        padding        : 20px;
+        overflow       : hidden;
+    }
+
+    // ── Centred states (loading / done / error) ───────────────────────────
+    .o_cheque_bp_centered {
+        display         : flex;
+        flex-direction  : column;
+        align-items     : center;
+        justify-content : center;
+        flex            : 1;
+        text-align      : center;
+        padding         : 40px;
+    }
+
+    // ── PDF preview iframe wrapper ────────────────────────────────────────
+    .o_cheque_bp_preview_wrap {
+        flex          : 1;
+        border        : 1px solid #dee2e6;
+        border-radius : 6px;
+        overflow      : hidden;
+        margin-bottom : 16px;
+        min-height    : 380px;
+    }
+
+    .o_cheque_bp_iframe {
+        width      : 100%;
+        height     : 100%;
+        min-height : 380px;
+        border     : none;
+        display    : block;
+    }
+
+    // ── Action bar ────────────────────────────────────────────────────────
+    .o_cheque_bp_actions {
+        padding     : 4px 0 0;
+        display     : flex;
+        align-items : flex-start;
+        flex-wrap   : wrap;
+        gap         : 8px;
+        flex-shrink : 0;
+    }
+
+    // ── Confirm box ───────────────────────────────────────────────────────
+    .o_cheque_bp_confirm_box {
+        background    : #fff8e1;
+        border        : 1px solid #ffe082;
+        border-radius : 8px;
+        padding       : 16px 20px;
+    }
+
+    // ── Footer ────────────────────────────────────────────────────────────
+    .o_cheque_bp_footer {
+        border-top  : 1px solid #e9ecef;
+        padding     : 10px 20px;
+        font-size   : 0.8rem;
+        color       : #adb5bd;
+        text-align  : center;
+        flex-shrink : 0;
+    }
+}
