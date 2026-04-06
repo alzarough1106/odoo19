@@ -1,9 +1,9 @@
 .. image:: static/description/banner.png
-   :alt: Direct Document Scanner — Odoo 19
+   :alt: Direct Document Scanner — Odoo 16
    :width: 100%
 
 ===========================================
-Direct Document Scanner for Odoo 19 CE
+Direct Document Scanner for Odoo 16 CE
 ===========================================
 
 **Scan physical documents directly into Odoo using your locally connected
@@ -18,7 +18,7 @@ Build multi-page PDFs directly within Odoo. 100% local processing.
 🎬 Demo Videos
 ==============
 
-- `Scanner Widget Overview <https://youtu.be/YyZgF2OhFXA>`_
+- `Scanner Widget Overview <https://youtu.be/ICjm4qbfUbA>`_
 - `ADF & PDF Workflow <https://youtu.be/4GZEN8-Rsfo>`_
 
 ----
@@ -31,7 +31,7 @@ Build multi-page PDFs directly within Odoo. 100% local processing.
   Your documents never leave your network.
 
 🦉 Native OWL 2 Widget
-  Drop-in integration for Odoo 19 forms. No configuration needed.
+  Drop-in integration for Odoo 16 forms. No configuration needed.
 
 ✂️ Interactive Crop Editor
   8 resize handles, draggable crop box, live pixel readout for
@@ -105,7 +105,7 @@ Build multi-page PDFs directly within Odoo. 100% local processing.
 1. Purchase and download the module from the
    `Odoo App Store <https://apps.odoo.com>`_.
 2. Download the scanner bridge binary for your platform from the
-   `Releases Page <https://github.com/alzarough1106/odoo19-binaries/releases>`_.
+   `Releases Page <https://github.com/alzarough1106/odoo16-binaries/releases>`_.
 3. Run the bridge binary on the machine connected to your scanner.
 4. Install the module in Odoo via **Apps → Upload Module**.
 5. Open any form view — the scanner widget will appear automatically.
@@ -115,7 +115,7 @@ Build multi-page PDFs directly within Odoo. 100% local processing.
 📋 Requirements
 ===============
 
-- Odoo 19.0 Community or Enterprise
+- Odoo 16.0 Community or Enterprise
 - Python 3.10+
 - A TWAIN / WIA / SANE / eSCL compatible scanner
 
