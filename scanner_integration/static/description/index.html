@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Direct Document Scanner — Odoo 19 CE</title>
+</head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;
+             color:#2c2c2c;background:#fff;">
+
+<!-- ═══════════════════════════════════════════
+     HERO SECTION
+═══════════════════════════════════════════ -->
+<div style="background-color:#2c4a5a; padding:60px 40px; text-align:center;">
+
+    <div style="font-size:72px; margin-bottom:16px;">🖨️</div>
+
+    <h1 style="margin:0 0 8px 0; font-size:36px; font-weight:700;
+               letter-spacing:-0.5px; color:#ffffff;">
+        Direct Document Scanner
+    </h1>
+
+    <p style="margin:0 0 24px 0; font-size:16px; color:#c8dede;">
+        for Odoo 19 Community Edition
+    </p>
+
+    <p style="margin:0 auto 36px auto; font-size:15px;
+              line-height:1.7; max-width:680px; color:#c8dede;">
+        Brings physical scanner hardware directly into Odoo forms over a local
+        WebSocket bridge. Supports flatbed scanning, ADF bulk-feed, interactive
+        cropping, multi-page PDF assembly, and full attachment management —
+        all inside a standard Odoo field widget.
+    </p>
+
+    <!-- Badge Row — inline-block spans, no flex, no rgba -->
+    <div style="text-align:center;">
+        <span style="display:inline-block; background-color:#3d6b6b;
+                     border:1px solid #5a8a8a; border-radius:20px;
+                     padding:8px 16px; font-size:13px; color:#ffffff; margin:4px;">
+            🦉 OWL 2 Component
+        </span>
+        <span style="display:inline-block; background-color:#3d6b6b;
+                     border:1px solid #5a8a8a; border-radius:20px;
+                     padding:8px 16px; font-size:13px; color:#ffffff; margin:4px;">
+            🔌 WebSocket Bridge
+        </span>
+        <span style="display:inline-block; background-color:#3d6b6b;
+                     border:1px solid #5a8a8a; border-radius:20px;
+                     padding:8px 16px; font-size:13px; color:#ffffff; margin:4px;">
+            🌐 USB · Wi-Fi · Ethernet
+        </span>
+        <span style="display:inline-block; background-color:#3d6b6b;
+                     border:1px solid #5a8a8a; border-radius:20px;
+                     padding:8px 16px; font-size:13px; color:#ffffff; margin:4px;">
+            📄 ADF &amp; Flatbed
+        </span>
+        <span style="display:inline-block; background-color:#3d6b6b;
+                     border:1px solid #5a8a8a; border-radius:20px;
+                     padding:8px 16px; font-size:13px; color:#ffffff; margin:4px;">
+            🔒 100% Local · No Cloud
+        </span>
+        <span style="display:inline-block; background-color:#3d6b6b;
+                     border:1px solid #5a8a8a; border-radius:20px;
+                     padding:8px 16px; font-size:13px; color:#ffffff; margin:4px;">
+            💰 One-Time Purchase
+        </span>
+    </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STATS ROW
+═══════════════════════════════════════════ -->
+<div style="background:#f8f7ff;padding:40px 20px;">
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;
+                gap:0;max-width:900px;margin:0 auto;">
+
+        <div style="text-align:center;padding:20px 40px;
+                    border-right:1px solid #e0ddf5;">
+            <div style="font-size:42px;font-weight:700;color:#6c5fc7;">2</div>
+            <div style="font-size:13px;color:#666;margin-top:4px;">OWL Widgets</div>
+        </div>
+        <div style="text-align:center;padding:20px 40px;
+                    border-right:1px solid #e0ddf5;">
+            <div style="font-size:42px;font-weight:700;color:#6c5fc7;">3</div>
+            <div style="font-size:13px;color:#666;margin-top:4px;">Platforms</div>
+        </div>
+        <div style="text-align:center;padding:20px 40px;
+                    border-right:1px solid #e0ddf5;">
+            <div style="font-size:42px;font-weight:700;color:#6c5fc7;">12+</div>
+            <div style="font-size:13px;color:#666;margin-top:4px;">Scanner Brands</div>
+        </div>
+        <div style="text-align:center;padding:20px 40px;
+                    border-right:1px solid #e0ddf5;">
+            <div style="font-size:42px;font-weight:700;color:#6c5fc7;">8</div>
+            <div style="font-size:13px;color:#666;margin-top:4px;">Crop Handles</div>
+        </div>
+        <div style="text-align:center;padding:20px 40px;">
+            <div style="font-size:42px;font-weight:700;color:#6c5fc7;">0</div>
+            <div style="font-size:13px;color:#666;margin-top:4px;">Cloud Dependency</div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     LIVE DEMO VIDEOS  ← KEY FIX: no iframes
+═══════════════════════════════════════════ -->
+<div style="padding:60px 40px;max-width:1100px;margin:0 auto;">
+
+    <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+        🎬 Live Demo Videos
+    </h2>
+    <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:24px;"></div>
+
+    <p style="color:#555;margin:0 0 32px 0;font-size:15px;line-height:1.6;">
+        Watch the Scanner Bridge in action — real hardware scanning directly
+        inside an Odoo 19 form view.
+    </p>
+
+    <div style="display:flex;flex-wrap:wrap;gap:24px;">
+
+        <!-- VIDEO 1 — replace VIDEO_ID_1 with your actual YouTube ID -->
+        <div style="flex:1;min-width:280px;border:1px solid #e5e5e5;
+                    border-radius:12px;overflow:hidden;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <a href="https://www.youtube.com/watch?v=ICjm4qbfUbA"
+               target="_blank"
+               style="display:block;position:relative;">
+                <img src="https://img.youtube.com/vi/ICjm4qbfUbA/maxresdefault.jpg"
+                     alt="Demo 1 — Scanner Widget Overview"
+                     style="width:100%;display:block;"/>
+                <!-- Play button overlay -->
+                <div style="position:absolute;top:50%;left:50%;
+                            transform:translate(-50%,-50%);
+                            width:64px;height:64px;
+                            background:rgba(255,0,0,0.85);
+                            border-radius:50%;
+                            display:flex;align-items:center;
+                            justify-content:center;">
+                    <div style="width:0;height:0;
+                                border-top:14px solid transparent;
+                                border-bottom:14px solid transparent;
+                                border-left:22px solid #fff;
+                                margin-left:4px;"></div>
+                </div>
+            </a>
+            <div style="padding:14px 16px;background:#fafafa;">
+                <p style="margin:0;font-size:14px;font-weight:600;color:#333;">
+                    🎞️ Demo 1 — Scanner Widget Overview
+                </p>
+            </div>
+        </div>
+
+        <!-- VIDEO 2 — replace VIDEO_ID_2 with your actual YouTube ID -->
+        <div style="flex:1;min-width:280px;border:1px solid #e5e5e5;
+                    border-radius:12px;overflow:hidden;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <a href="https://www.youtube.com/watch?v=4GZEN8-Rsfo"
+               target="_blank"
+               style="display:block;position:relative;">
+                <img src="https://img.youtube.com/vi/4GZEN8-Rsfo/maxresdefault.jpg"
+                     alt="Demo 2 — ADF & PDF Workflow"
+                     style="width:100%;display:block;"/>
+                <div style="position:absolute;top:50%;left:50%;
+                            transform:translate(-50%,-50%);
+                            width:64px;height:64px;
+                            background:rgba(255,0,0,0.85);
+                            border-radius:50%;
+                            display:flex;align-items:center;
+                            justify-content:center;">
+                    <div style="width:0;height:0;
+                                border-top:14px solid transparent;
+                                border-bottom:14px solid transparent;
+                                border-left:22px solid #fff;
+                                margin-left:4px;"></div>
+                </div>
+            </a>
+            <div style="padding:14px 16px;background:#fafafa;">
+                <p style="margin:0;font-size:14px;font-weight:600;color:#333;">
+                    🎞️ Demo 2 — ADF &amp; PDF Workflow
+                </p>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     KEY FEATURES
+═══════════════════════════════════════════ -->
+<div style="background:#f8f7ff;padding:60px 40px;">
+    <div style="max-width:1100px;margin:0 auto;">
+
+        <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+            ⚡ Key Features
+        </h2>
+        <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:32px;"></div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:20px;">
+
+            <div style="flex:1;min-width:260px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border-top:4px solid #6c5fc7;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <div style="font-size:32px;margin-bottom:12px;">🔒</div>
+                <h3 style="margin:0 0 10px 0;font-size:16px;font-weight:700;">
+                    100% Local Processing
+                </h3>
+                <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">
+                    Zero cloud dependency. All image processing runs in the browser
+                    and on the local workstation — no data ever leaves your network.
+                </p>
+            </div>
+
+            <div style="flex:1;min-width:260px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border-top:4px solid #e05d5d;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <div style="font-size:32px;margin-bottom:12px;">✂️</div>
+                <h3 style="margin:0 0 10px 0;font-size:16px;font-weight:700;">
+                    Interactive Crop &amp; Rotating Editor
+                </h3>
+                <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">
+                    8 resize handles, draggable crop box, rule-of-thirds grid,
+                    and live pixel readout — rendered directly inside the Odoo form.
+                    Rotate pages 90° left/right!
+                </p>
+            </div>
+
+            <div style="flex:1;min-width:260px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border-top:4px solid #4db6a0;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <div style="font-size:32px;margin-bottom:12px;">📚</div>
+                <h3 style="margin:0 0 10px 0;font-size:16px;font-weight:700;">
+                    ADF Bulk-Feed Scanning
+                </h3>
+                <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">
+                    Scan entire document stacks in one click. All pages are
+                    processed, thumbnailed, and queued for PDF assembly automatically.
+                </p>
+            </div>
+
+            <div style="flex:1;min-width:260px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border-top:4px solid #f5a623;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <div style="font-size:32px;margin-bottom:12px;">📑</div>
+                <h3 style="margin:0 0 10px 0;font-size:16px;font-weight:700;">
+                    Multi-Page PDF Assembly
+                </h3>
+                <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">
+                    Reorder pages, re-crop individual pages, set custom filename,
+                    and generate a PDF — all stored as ir.attachment in Odoo.
+                </p>
+            </div>
+
+            <div style="flex:1;min-width:260px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border-top:4px solid #3b82f6;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <div style="font-size:32px;margin-bottom:12px;">🌐</div>
+                <h3 style="margin:0 0 10px 0;font-size:16px;font-weight:700;">
+                    USB + Wi-Fi + Ethernet
+                </h3>
+                <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">
+                    Network scanners discovered automatically via eSCL/AirScan.
+                    No manual IP configuration needed.
+                </p>
+            </div>
+
+            <div style="flex:1;min-width:260px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border-top:4px solid #8b5cf6;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <div style="font-size:32px;margin-bottom:12px;">🦉</div>
+                <h3 style="margin:0 0 10px 0;font-size:16px;font-weight:700;">
+                    Native OWL 2 Widget
+                </h3>
+                <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">
+                    Drop-in <code style="background:#f0eeff;padding:2px 5px;
+                border-radius:4px;">widget=</code> attribute integration.
+                    Works on any binary or many2many field in any Odoo 19 form view.
+                </p>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     HARDWARE SUPPORT
+═══════════════════════════════════════════ -->
+<div style="background:#f8f7ff;padding:60px 40px;">
+    <div style="max-width:1100px;margin:0 auto;">
+
+        <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+            🖨️ Universal Hardware Support
+        </h2>
+        <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:16px;"></div>
+
+        <p style="color:#555;margin:0 0 24px 0;font-size:15px;">
+            1 Year full support, that including how to run the scanner_bridge (.py or binary once).
+        </p>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     TWO OWL WIDGETS
+═══════════════════════════════════════════ -->
+<div style="padding:60px 40px;max-width:1100px;margin:0 auto;">
+
+    <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+        🧩 Two Purpose-Built OWL Widgets
+    </h2>
+    <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:16px;"></div>
+
+    <p style="color:#555;margin:0 0 32px 0;font-size:15px;">
+        Place either widget on any Odoo 19 form view using a single
+        <code style="background:#f0eeff;padding:3px 8px;border-radius:4px;
+                      font-size:13px;">widget=</code> attribute.
+    </p>
+
+    <div style="display:flex;flex-wrap:wrap;gap:24px;">
+
+        <!-- Image Widget -->
+        <div style="flex:1;min-width:280px;border:1px solid #e0ddf5;
+                    border-radius:12px;padding:28px;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+            <div style="margin-bottom:16px;">
+                <span style="background:#6c5fc7;color:#fff;
+                             border-radius:6px;padding:4px 10px;
+                             font-size:13px;font-weight:600;
+                             font-family:monospace;">
+                    scanner_image
+                </span>
+                <span style="margin-left:8px;font-size:16px;font-weight:700;">
+                    🖼️ Image Widget
+                </span>
+            </div>
+            <p style="color:#888;font-size:13px;margin:0 0 16px 0;">
+                Attaches to a
+                <code style="background:#f5f5f5;padding:2px 6px;
+                             border-radius:4px;">binary</code> field
+            </p>
+            <ul style="margin:0;padding-left:20px;color:#444;
+                       font-size:14px;line-height:1.9;">
+                <li>Single-image capture for document &amp; cheque scanning</li>
+                <li>Stores image directly in the record's binary field</li>
+                <li>Full interactive crop editor inside the form</li>
+                <li>Upload from disk as fallback</li>
+                <li>Clear button to remove stored image</li>
+                <li>Live Bridge Status indicator</li>
+                <li>Fully respects Odoo readonly attribute</li>
+            </ul>
+        </div>
+
+        <!-- PDF Widget -->
+        <div style="flex:1;min-width:280px;border:1px solid #e0ddf5;
+                    border-radius:12px;padding:28px;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+            <div style="margin-bottom:16px;">
+                <span style="background:#6c5fc7;color:#fff;
+                             border-radius:6px;padding:4px 10px;
+                             font-size:13px;font-weight:600;
+                             font-family:monospace;">
+                    scanner_pdf
+                </span>
+                <span style="margin-left:8px;font-size:16px;font-weight:700;">
+                    📑 PDF Widget
+                </span>
+            </div>
+            <p style="color:#888;font-size:13px;margin:0 0 16px 0;">
+                Attaches to a
+                <code style="background:#f5f5f5;padding:2px 6px;
+                             border-radius:4px;">many2many</code> field
+            </p>
+            <ul style="margin:0;padding-left:20px;color:#444;
+                       font-size:14px;line-height:1.9;">
+                <li>Multi-page workflow with page queue &amp; PDF assembly</li>
+                <li>Manages full ir.attachment records</li>
+                <li>ADF bulk-feed in a single operation</li>
+                <li>Attachment list with preview, download, deletion</li>
+                <li>Direct file upload bypassing scan queue</li>
+                <li>PDF preview via browser's native renderer</li>
+                <li>Custom filename dialog before saving</li>
+            </ul>
+        </div>
+
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     HARDWARE SUPPORT
+═══════════════════════════════════════════ -->
+<div style="background:#f8f7ff;padding:60px 40px;">
+    <div style="max-width:1100px;margin:0 auto;">
+
+        <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+            🖨️ Universal Hardware Support
+        </h2>
+        <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:16px;"></div>
+
+        <p style="color:#555;margin:0 0 24px 0;font-size:15px;">
+            Works with virtually all major scanner brands connected via
+            USB, Wi-Fi, or Ethernet.
+        </p>
+
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">HP</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Canon</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Epson</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Brother</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Ricoh</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Fujitsu</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Xerox</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Kodak</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Lexmark</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;background:#fff;">Samsung</span>
+            <span style="border:1px solid #ccc;border-radius:20px;
+                     padding:8px 18px;font-size:14px;
+                     background:#fff;color:#6c5fc7;font-weight:600;">
+            + many more
+        </span>
+        </div>
+
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     WEBSOCKET BRIDGE PROTOCOL TABLE
+═══════════════════════════════════════════ -->
+<div style="padding:60px 40px;max-width:1100px;margin:0 auto;">
+
+    <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+        🔌 WebSocket Bridge Protocol
+    </h2>
+    <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:16px;"></div>
+
+    <p style="color:#555;margin:0 0 28px 0;font-size:15px;line-height:1.6;">
+        The widget communicates with the local Python scanner bridge over a
+        persistent WebSocket. The bridge runs entirely on the user's workstation —
+        no data leaves the local network.
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+        <tr style="background:#6c5fc7;color:#fff;">
+            <th style="padding:12px 16px;text-align:left;
+                           border-radius:8px 0 0 0;">Action
+            </th>
+            <th style="padding:12px 16px;text-align:left;">Direction</th>
+            <th style="padding:12px 16px;text-align:left;">Purpose</th>
+            <th style="padding:12px 16px;text-align:right;
+                           border-radius:0 8px 0 0;">Timeout
+            </th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr style="background:#fff;">
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                <code style="background:#f0eeff;padding:2px 7px;
+                                 border-radius:4px;">ping</code>
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           color:#888;">→ Bridge
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                Health check — verifies the bridge is alive
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           text-align:right;">
+                    <span style="background:#4db6a0;color:#fff;padding:3px 8px;
+                                 border-radius:10px;font-size:12px;">2 s</span>
+            </td>
+        </tr>
+        <tr style="background:#fafafa;">
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                <code style="background:#f0eeff;padding:2px 7px;
+                                 border-radius:4px;">list_scanners</code>
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           color:#888;">→ Bridge
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                Returns all detected scanner devices with display names
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           text-align:right;">
+                    <span style="background:#4db6a0;color:#fff;padding:3px 8px;
+                                 border-radius:10px;font-size:12px;">8 s</span>
+            </td>
+        </tr>
+        <tr style="background:#fff;">
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                <code style="background:#f0eeff;padding:2px 7px;
+                                 border-radius:4px;">scan</code>
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           color:#888;">→ Bridge
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                Triggers flatbed scan. Returns Base64 image.
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           text-align:right;">
+                    <span style="background:#f5a623;color:#fff;padding:3px 8px;
+                                 border-radius:10px;font-size:12px;">30 s</span>
+            </td>
+        </tr>
+        <tr style="background:#fafafa;">
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                <code style="background:#f0eeff;padding:2px 7px;
+                                 border-radius:4px;">scan_adf</code>
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           color:#888;">→ Bridge
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;">
+                Triggers ADF bulk-feed scan. Returns Base64 images array.
+            </td>
+            <td style="padding:12px 16px;border-bottom:1px solid #eee;
+                           text-align:right;">
+                    <span style="background:#e05d5d;color:#fff;padding:3px 8px;
+                                 border-radius:10px;font-size:12px;">120 s</span>
+            </td>
+        </tr>
+        <tr style="background:#fff;">
+            <td style="padding:12px 16px;">
+                <code style="background:#f0eeff;padding:2px 7px;
+                                 border-radius:4px;">make_pdf</code>
+            </td>
+            <td style="padding:12px 16px;color:#888;">→ Bridge</td>
+            <td style="padding:12px 16px;">
+                Assembles Base64 images into PDF. Returns Base64 PDF.
+            </td>
+            <td style="padding:12px 16px;text-align:right;">
+                    <span style="background:#f5a623;color:#fff;padding:3px 8px;
+                                 border-radius:10px;font-size:12px;">60 s</span>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SYSTEM REQUIREMENTS
+═══════════════════════════════════════════ -->
+<div style="background:#f8f7ff;padding:60px 40px;">
+    <div style="max-width:1100px;margin:0 auto;">
+
+        <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+            🛠️ System Requirements
+        </h2>
+        <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:16px;"></div>
+
+        <p style="color:#555;margin:0 0 28px 0;font-size:15px;line-height:1.6;">
+            Python 3.8 or later required. Install platform-specific dependencies,
+            then run
+            <code style="background:#e8e5ff;padding:3px 8px;border-radius:4px;">
+                scanner_bridge.py
+            </code>
+            on the workstation connected to the scanner. It's located at the main module root folder inside a folder
+            named bridge!
+        </p>
+
+        <div style="display:flex;flex-wrap:wrap;gap:20px;">
+
+            <!-- Windows -->
+            <div style="flex:1;min-width:240px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border:1px solid #e0ddf5;text-align:center;">
+                <div style="font-size:40px;margin-bottom:10px;">🪟</div>
+                <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;">Windows</h3>
+                <p style="color:#888;font-size:13px;margin:0 0 16px 0;">Windows 10 / 11</p>
+                <pre style="background:#1e1e2e;color:#cdd6f4;
+                        border-radius:8px;padding:14px;
+                        font-size:13px;text-align:left;
+                        margin:0;overflow-x:auto;line-height:1.6;">pip install websockets Pillow pywin32</pre>
+            </div>
+
+            <!-- Linux -->
+            <div style="flex:1;min-width:240px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border:1px solid #e0ddf5;text-align:center;">
+                <div style="font-size:40px;margin-bottom:10px;">🐧</div>
+                <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;">Linux</h3>
+                <p style="color:#888;font-size:13px;margin:0 0 16px 0;">
+                    Ubuntu 20.04+ · Fedora · RHEL
+                </p>
+                <pre style="background:#1e1e2e;color:#cdd6f4;
+                        border-radius:8px;padding:14px;
+                        font-size:13px;text-align:left;
+                        margin:0;overflow-x:auto;line-height:1.6;">sudo apt install sane sane-utils
+pip install websockets Pillow \
+    python-sane</pre>
+            </div>
+
+            <!-- macOS -->
+            <div style="flex:1;min-width:240px;background:#fff;
+                    border-radius:12px;padding:24px;
+                    border:1px solid #e0ddf5;text-align:center;">
+                <div style="font-size:40px;margin-bottom:10px;">🍎</div>
+                <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;">macOS</h3>
+                <p style="color:#888;font-size:13px;margin:0 0 16px 0;">macOS 12+</p>
+                <pre style="background:#1e1e2e;color:#cdd6f4;
+                        border-radius:8px;padding:14px;
+                        font-size:13px;text-align:left;
+                        margin:0;overflow-x:auto;line-height:1.6;">brew install sane-backends
+pip install websockets Pillow</pre>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     WINDOWS COMPILED BRIDGE
+═══════════════════════════════════════════ -->
+<div class="text-center my-5">
+    <h2>Windows Service — Compiled Bridge</h2>
+    <p>Copy this link and paste it into a new browser tab:</p>
+
+    <div class="d-inline-block px-3 py-2 border rounded bg-light">
+        <code>https://github.com/alzarough1106/scanner-bridge-binaries/releases/tag/v19.0.1.0.0</code>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     FOOTER
+═══════════════════════════════════════════ -->
+<div style="background-color:#2c4a5a; padding:40px; text-align:center;">
+
+    <p style="font-size:18px; font-weight:700; margin:0 0 6px 0; color:#ffffff;">
+        🖨️ Direct Document Scanner
+    </p>
+
+    <p style="font-size:13px; color:#9ab8b8; margin:0 0 20px 0;">
+        Native OWL Widget for Odoo 19 CE ·
+        Cross-platform · No cloud dependency · USB, Wi-Fi &amp; Ethernet support
+    </p>
+
+    <!-- Feature list — inline spans, no flex -->
+    <div style="text-align:center; margin-bottom:24px;">
+        <span style="font-size:13px; color:#c8dede; margin:0 8px;">🦉 OWL 2 Component</span>
+        <span style="font-size:13px; color:#c8dede; margin:0 8px;">🪟 Windows</span>
+        <span style="font-size:13px; color:#c8dede; margin:0 8px;">🐧 Linux</span>
+        <span style="font-size:13px; color:#c8dede; margin:0 8px;">🍎 macOS</span>
+        <span style="font-size:13px; color:#c8dede; margin:0 8px;">🔒 100% Local</span>
+        <span style="font-size:13px; color:#c8dede; margin:0 8px;">📄 ADF + Flatbed</span>
+    </div>
+
+    <!-- Divider — hr instead of div with rgba background -->
+    <hr style="border:none; border-top:1px solid #3d6b6b;
+               max-width:400px; margin:0 auto 20px auto;"/>
+
+    <p style="font-size:12px; color:#7a9898; margin:0;">
+        © 2026 Alzarough — All Rights Reserved &nbsp;|&nbsp;
+        License: OPL-1 &nbsp;|&nbsp;
+        <a href="mailto:alzarough@gmail.com"
+           style="color:#c8dede; text-decoration:underline;">
+            alzarough@gmail.com
+        </a>
+    </p>
+
+</div>
+
+</body>
+</html>
