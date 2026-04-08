@@ -18,7 +18,7 @@ Build multi-page PDFs directly within Odoo. 100% local processing.
 🎬 Demo Videos
 ==============
 
-- `Scanner Widget Overview <https://youtu.be/YyZgF2OhFXA>`_
+- `Scanner Widget Overview <https://youtu.be/ICjm4qbfUbA>`_
 - `ADF & PDF Workflow <https://youtu.be/4GZEN8-Rsfo>`_
 
 ----
