@@ -115,7 +115,7 @@
 
     <p style="color:#555;margin:0 0 32px 0;font-size:15px;line-height:1.6;">
         Watch the Scanner Bridge in action — real hardware scanning directly
-        inside an Odoo 19 form view.
+        inside an Odoo 16 form view.
     </p>
 
     <div style="display:flex;flex-wrap:wrap;gap:24px;">
@@ -154,38 +154,6 @@
 
     </div>
 </div>
-
-<!-- ═══════════════════════════════════════════
-     HARDWARE SUPPORT
-═══════════════════════════════════════════ -->
-
-<div style="background:#f8f7ff;padding:60px 40px;">
-    <div style="max-width:1100px;margin:0 auto;">
-
-        <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
-            Module Support
-        </h2>
-        <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
-                border-radius:2px;margin-bottom:16px;"></div>
-
-        <p style="color:#555;margin:0 0 24px 0;font-size:15px;">
-            1 Year full support, that including how to run the scanner_bridge (.py or binary once).
-        </p>
-    </div>
-</div>
-
-<table align="center" style="margin: 20px auto;">
-    <p align="center" style="color:black"> Contact us on WhatsApp </p>
-    <tr>
-        <td style="background-color: #25D366; padding: 10px 20px; border-radius: 25px;">
-            <a href="https://wa.me/218922586515"
-               target="_blank"
-               style="color: white; text-decoration: none; font-weight: bold;">
-                📱 WhatsApp: +218922586515
-            </a>
-        </td>
-    </tr>
-</table>
 
 <!-- ═══════════════════════════════════════════
      KEY FEATURES
@@ -291,6 +259,38 @@
     </div>
 </div>
 
+
+<!-- ═══════════════════════════════════════════
+     HARDWARE SUPPORT
+═══════════════════════════════════════════ -->
+<div style="background:#f8f7ff;padding:60px 40px;">
+    <div style="max-width:1100px;margin:0 auto;">
+
+        <h2 style="font-size:28px;font-weight:700;margin:0 0 8px 0;">
+            Module Support
+        </h2>
+        <div style="height:3px;background:linear-gradient(90deg,#6c5fc7,#4db6a0);
+                border-radius:2px;margin-bottom:16px;"></div>
+
+        <p style="color:#555;margin:0 0 24px 0;font-size:15px;">
+            1 Year full support, that including how to run the scanner_bridge (.py or binary once).
+        </p>
+    </div>
+</div>
+
+<table align="center" style="margin: 20px auto;">
+    <p align="center" style="color:black"> Contact us on WhatsApp </p>
+    <tr>
+        <td style="background-color: #25D366; padding: 10px 20px; border-radius: 25px;">
+            <a href="https://wa.me/218922586515"
+               target="_blank"
+               style="color: white; text-decoration: none; font-weight: bold;">
+                📱 WhatsApp: +218922586515
+            </a>
+        </td>
+    </tr>
+</table>
+
 <!-- ═══════════════════════════════════════════
      TWO OWL WIDGETS
 ═══════════════════════════════════════════ -->
@@ -376,6 +376,87 @@
 
     </div>
 </div>
+
+<!-- How to Use Section -->
+
+<div style="background: #f8f9fa; padding: 30px; border-radius: 10px; margin: 30px 0;">
+    <h2 style="color: #2c3e50; text-align: center; margin-bottom: 30px;">
+        📖 How to Use the Scanner Widget
+    </h2>
+
+    <div style="max-width: 1000px; margin: 0 auto;">
+
+        <!-- PDF Scanner Usage -->
+        <div style="background: white; padding: 25px; border-radius: 8px; margin-bottom: 25px;
+                    border-left: 4px solid #e74c3c; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h3 style="color: #e74c3c; margin-bottom: 15px;">
+                📄 For PDF Documents (Many2many Attachments)
+            </h3>
+
+            <h4 style="color: #34495e; margin-bottom: 10px;">Step 1: Define the Field</h4>
+            <div style="background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 5px;
+                        font-family: 'Courier New', monospace; margin-bottom: 15px; overflow-x: auto;">
+<pre style="margin: 0; white-space: pre-wrap;">pdf_attachment = fields.Many2many(
+    comodel_name='ir.attachment',
+    relation='cheque_book_ir_attachment_rel',
+    column1='cheque_book_id',
+    column2='attachment_id',
+    string='Attached/Scanned Documents',
+)</pre>
+            </div>
+
+            <h4 style="color: #34495e; margin-bottom: 10px;">Step 2: Add to Form View</h4>
+            <div style="background: #27ae60; color: white; padding: 15px; border-radius: 5px;
+                        font-family: 'Courier New', monospace; overflow-x: auto;">
+<pre style="margin: 0; white-space: pre-wrap;">&lt;div class="o_field_widget o_wrap_field px-0"&gt;
+    &lt;field name="pdf_attachment"
+           widget="scanner_pdf"
+           nolabel="1"/&gt;
+&lt;/div&gt;</pre>
+            </div>
+        </div>
+
+        <!-- Image Scanner Usage -->
+        <div style="background: white; padding: 25px; border-radius: 8px; margin-bottom: 25px;
+                    border-left: 4px solid #3498db; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h3 style="color: #3498db; margin-bottom: 15px;">
+                🖼️ For Images (Binary Field)
+            </h3>
+
+            <h4 style="color: #34495e; margin-bottom: 10px;">Step 1: Define the Field</h4>
+            <div style="background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 5px;
+                        font-family: 'Courier New', monospace; margin-bottom: 15px; overflow-x: auto;">
+<pre style="margin: 0; white-space: pre-wrap;">cheque_image = fields.Binary('Cheque Background Image', attachment=True)</pre>
+            </div>
+
+            <h4 style="color: #34495e; margin-bottom: 10px;">Step 2: Add to Form View</h4>
+            <div style="background: #27ae60; color: white; padding: 15px; border-radius: 5px;
+                        font-family: 'Courier New', monospace; overflow-x: auto;">
+<pre style="margin: 0; white-space: pre-wrap;">&lt;div class="o_field_widget o_wrap_field px-0"&gt;
+    &lt;field name="cheque_image"
+           widget="scanner_image"
+           nolabel="1"/&gt;
+&lt;/div&gt;</pre>
+            </div>
+        </div>
+
+        <!-- Usage Tips -->
+        <div style="background: white; padding: 25px; border-radius: 8px;
+                    border-left: 4px solid #f39c12; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h3 style="color: #f39c12; margin-bottom: 15px;">
+                💡 Usage Tips
+            </h3>
+            <ul style="color: #34495e; line-height: 1.8; margin-left: 20px;">
+                <li><strong>PDF Widget:</strong> Use <code>scanner_pdf</code> for multiple document scanning and attachment</li>
+                <li><strong>Image Widget:</strong> Use <code>scanner_image</code> for single image capture and storage</li>
+                <li><strong>Field Relations:</strong> Customize the relation name to match your model requirements</li>
+                <li><strong>Responsive Design:</strong> The widgets are fully responsive and work on all devices</li>
+                <li><strong>Security:</strong> All uploads are validated and secured through Odoo's attachment system</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
 
 <!-- ═══════════════════════════════════════════
      HARDWARE SUPPORT
@@ -572,7 +653,7 @@
                     border-radius:12px;padding:24px;
                     border:1px solid #e0ddf5;text-align:center;">
                 <div style="font-size:40px;margin-bottom:10px;">🪟</div>
-                <h3 style="margin:0 0 4px 0;font-size:16px;font-weight:700;">Windows</h3>
+                <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;">Windows</h3>
                 <p style="color:#888;font-size:13px;margin:0 0 16px 0;">Windows 10 / 11</p>
                 <pre style="background:#1e1e2e;color:#cdd6f4;
                         border-radius:8px;padding:14px;
@@ -585,7 +666,7 @@
                     border-radius:12px;padding:24px;
                     border:1px solid #e0ddf5;text-align:center;">
                 <div style="font-size:40px;margin-bottom:10px;">🐧</div>
-                <h3 style="margin:0 0 4px 0;font-size:16px;font-weight:700;">Linux</h3>
+                <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;">Linux</h3>
                 <p style="color:#888;font-size:13px;margin:0 0 16px 0;">
                     Ubuntu 20.04+ · Fedora · RHEL
                 </p>
@@ -602,7 +683,7 @@ pip install websockets Pillow \
                     border-radius:12px;padding:24px;
                     border:1px solid #e0ddf5;text-align:center;">
                 <div style="font-size:40px;margin-bottom:10px;">🍎</div>
-                <h3 style="margin:0 0 4px 0;font-size:16px;font-weight:700;">macOS</h3>
+                <h3 style="margin:0 0 4px 0;font-size:17px;font-weight:700;">macOS</h3>
                 <p style="color:#888;font-size:13px;margin:0 0 16px 0;">macOS 12+</p>
                 <pre style="background:#1e1e2e;color:#cdd6f4;
                         border-radius:8px;padding:14px;
