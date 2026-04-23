@@ -32,11 +32,11 @@ Requirements
     'category': 'Technical/Document Management',
     'author': 'Alzarough',
     'maintainer': 'Alzarough',
-    'website': 'https://www.youtube.com/watch?v=ICjm4qbfUbA',
+    'website': 'https://youtu.be/eVYmdfLoyVs',
     'support': 'alzarough@gmail.com',
 
     'license': 'OPL-1',
-    'price': 185.0,
+    'price': 50.0,
     'currency': 'USD',
 
     'images': [
