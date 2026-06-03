@@ -1,5 +1,5 @@
 {
-    'name': 'Direct Document Scanner',
+    'name': 'Scan Documents Into Odoo',
     'version': '18.0.1.0.0',
     'summary': 'Scan documents directly into Odoo using any locally connected scanner — no plugins, no cloud.',
     'description': """
@@ -36,7 +36,7 @@ Requirements
     'support': 'alzarough@gmail.com',
 
     'license': 'OPL-1',
-    'price': 50.0,
+    'price': 5.0,
     'currency': 'USD',
 
     'images': [
