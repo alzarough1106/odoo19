@@ -4,19 +4,45 @@
 # License OPL-1 - See LICENSE file
 # Unauthorized use is strictly prohibited!
 """
-Cheque Scanner Bridge  v1.7.7
+Cheque Scanner Bridge  v1.7.11
 ==============================
 ws://localhost:8765  →  Odoo Cheque Book / Document Scanner
 
-Changes in v1.7.7
+Changes in v1.7.11
+------------------
+- FIX: Content-signature duplicate detection was too aggressive for
+  cheque-book scans.  Cheques from the same book share an identical
+  printed template (bank logo, layout, cheque numbers, MICR line) and
+  only the handwritten date/amount/signature vary — at 64×64 those
+  variations averaged below the old threshold of 3.0 → false positive.
+  Now:
+    * Signature raised to 128×128 grayscale for finer resolution.
+    * AVG_DIFF_THRESHOLD lowered to 1.0 (only near-perfect duplicates).
+    * Two-factor check: BOTH byte-size within 300 bytes AND content
+      signature match must hold before a scan is flagged as duplicate.
+- NEW: Per-page progress notifications during ADF batch scans.  The
+  bridge now sends {"status": "progress", "page": N} messages via the
+  WebSocket after every page, so the JS client stays alive during long
+  scans and can update the UI incrementally.  Prevents "Request timed
+  out" errors from short JS timeouts.
+- scan_adf() and _scan_wia_adf() accept a progress_cb callback; the
+  WebSocket handler wires it up via an asyncio.Queue + run_coroutine_
+  threadsafe bridge from the executor thread.
+
+Changes in v1.7.10
+------------------
+- _scan_wia_adf() overhauled: WIA property enumeration by PropertyID
+  (fixes "Index out of range" on PaperStream WIA), content-signature
+  duplicate detection, cached TWAIN "known broken" state.
+
+Changes in v1.7.9
 -----------------
-- Added _humanise_wia_device() and _humanise_sane_device() helpers so that
-  printer-scanners (MFPs) always show a readable name instead of a blank
-  or raw device-ID string on all three platforms.
-- get_scanners_wia() fully rewritten: 5-tier discovery (wia package →
-  WIA COM → Get-PnpDevice PowerShell → WMI Win32_PnPEntity → Registry STI).
-- get_scanners_linux() Tier 1 & 2 now use _humanise_sane_device().
-- get_scanners_macos() Tier 1 & 2 now use _humanise_sane_device().
+- _scan_wia_adf() rewritten for Fujitsu fi-7xxx / PaperStream WIA.
+- File logging added; _is_frozen() for compiled builds.
+
+Changes in v1.7.8
+-----------------
+- _scan_twain_adf() rewritten for PaperStream IP.
 
 Install
 -------
@@ -50,15 +76,37 @@ import urllib.error
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor
 
+
+# ─── Nuitka / PyInstaller frozen-build compatibility ─────────────────────────
+def _is_frozen() -> bool:
+    """True when running as a compiled .exe (Nuitka --onefile or PyInstaller)."""
+    return getattr(sys, "frozen", False) or "__compiled__" in globals()
+
+
+if _is_frozen():
+    if len(sys.argv) > 0:
+        sys.argv[0] = "scanner_bridge.exe"
+
+
+# ─── Logging (file + stdout, works even with hidden console) ─────────────────
+_LOG_FILE = os.path.join(tempfile.gettempdir(), "scanner_bridge.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.FileHandler(_LOG_FILE, mode="a", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 log = logging.getLogger("scanner_bridge")
 
 executor = ThreadPoolExecutor(max_workers=1)
 SHOW_UI = False
+
+# Cache TWAIN's "doesn't work with this driver" state so we don't waste
+# ~2 seconds retrying it on every scan_adf request.
+_TWAIN_KNOWN_BROKEN = False
 
 # Suppress CMD flash on Windows for all subprocess calls
 _NO_WINDOW = (
@@ -74,7 +122,6 @@ _ESCL_URL_CACHE = os.path.join(tempfile.gettempdir(), ".escl_url_cache_bridge")
 # ─── Device-name humanisation helpers ────────────────────────────────────────
 
 def _sane_backend_vendor(dev_name: str) -> str:
-    """Map common SANE backend prefixes to vendor display names."""
     backend = dev_name.split(":")[0].lower().rstrip("0123456789")
     return {
         "hpaio":    "HP",
@@ -98,35 +145,22 @@ def _sane_backend_vendor(dev_name: str) -> str:
 
 
 def _humanise_sane_device(dev_name: str, vendor: str = "", model: str = "") -> str:
-    """
-    Derive a human-readable label from a SANE device URI.
-
-    Priority:
-      1. vendor + model metadata  (already populated by python-sane)
-      2. Model segment in URI     →  hpaio:/net/HP_OfficeJet_Pro_9010?…
-      3. Backend:model token      →  pixma:MF4500_series
-      4. IP address fallback      →  Epson (192.168.1.100)
-      5. Raw dev_name as last resort
-    """
     display = f"{vendor} {model}".strip()
     if display:
         return display
 
-    # hpaio:/usb/<MODEL>?...  or  hpaio:/net/<MODEL>?...
     m = re.search(r"/(?:usb|net|tcp)/([^?;/#]+)", dev_name)
     if m:
         name = m.group(1).replace("_", " ").replace("-", " ").strip()
         prefix = _sane_backend_vendor(dev_name)
         return f"{prefix} {name}".strip() if prefix else name
 
-    # backend:MODEL_STRING  e.g. pixma:04A9_MF4500_series
     m = re.search(r"^[a-z0-9]+:([A-Za-z][A-Za-z0-9_\-]+)", dev_name)
     if m:
         name = m.group(1).replace("_", " ").replace("-", " ").strip()
         prefix = _sane_backend_vendor(dev_name)
         return f"{prefix} {name}".strip() if prefix else name
 
-    # IP address in URI  e.g.  epson2:net:192.168.1.100
     m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", dev_name)
     if m:
         prefix = _sane_backend_vendor(dev_name)
@@ -137,21 +171,6 @@ def _humanise_sane_device(dev_name: str, vendor: str = "", model: str = "") -> s
 
 def _humanise_wia_device(dev_id: str, name: str = "", manufacturer: str = "",
                           description: str = "") -> str:
-    """
-    Derive a readable display name for a WIA/PnP device.
-
-    WIA DeviceIDs look like:
-      {6BDD1FC6-810F-11D0-BEC7-08002BE2092F}\\0007
-      USB\\VID_03F0&PID_2B17\\XXXXXXXX
-      ROOT\\IMAGE\\0000
-
-    Priority:
-      1. manufacturer + name  (from WIA device properties)
-      2. description alone
-      3. name alone
-      4. USB VID/PID → known vendor prefix
-      5. GUID instance number as last resort
-    """
     mfr  = manufacturer.strip()
     nm   = name.strip()
     desc = description.strip()
@@ -198,14 +217,6 @@ def _humanise_wia_device(dev_id: str, name: str = "", manufacturer: str = "",
 # ─── Windows scanner discovery ────────────────────────────────────────────────
 
 def get_scanners_wia() -> list:
-    """
-    Five-tier Windows scanner discovery:
-      Tier 1 — wia Python package        (simplest, rarely installed)
-      Tier 2 — WIA COM DeviceManager     (standard WIA, USB + network)
-      Tier 3 — Get-PnpDevice PowerShell  (modern, catches WIA + STI devices)
-      Tier 4 — WMI Win32_PnPEntity       (legacy fallback, hardware-level)
-      Tier 5 — Registry STI class key    (scanners with no WIA driver)
-    """
     scanners = []
     seen = set()
 
@@ -221,7 +232,6 @@ def get_scanners_wia() -> list:
                 "note":    note,
             })
 
-    # ── Tier 1: wia Python package ────────────────────────────────────────
     try:
         import wia
         for d in wia.DeviceManager().devices:
@@ -237,7 +247,6 @@ def get_scanners_wia() -> list:
     except Exception as e:
         log.warning("get_scanners_wia: wia package failed: %s", e)
 
-    # ── Tier 2: WIA COM DeviceManager ─────────────────────────────────────
     try:
         import win32com.client
         mgr = win32com.client.Dispatch("WIA.DeviceManager")
@@ -291,7 +300,6 @@ def get_scanners_wia() -> list:
     except Exception as e:
         log.warning("get_scanners_wia: WIA COM failed: %s", e)
 
-    # ── Tier 3: Get-PnpDevice (PowerShell, Windows 8+) ────────────────────
     try:
         ps_cmd = (
             "Get-PnpDevice -Class 'Image','Printer' -Status 'OK','Unknown' "
@@ -320,10 +328,10 @@ def get_scanners_wia() -> list:
                     note  = "Printer — may have scan capability"
                     ready = False
 
-                # Skip plain printers that show no MFP keywords
                 if cls.lower() == "printer" and not re.search(
                     r"scan|mfp|multifunction|aio|officejet|deskjet|"
-                    r"envy|pixma|workforce|mfc|laserjet|color\s*laser",
+                    r"envy|pixma|workforce|mfc|laserjet|color\s*laser|"
+                    r"fi-\d|fujitsu|scansnap|kodak\s*i\d|kv-s\d",
                     friendly, re.I,
                 ):
                     continue
@@ -339,7 +347,6 @@ def get_scanners_wia() -> list:
     except Exception as e:
         log.warning("get_scanners_wia: Get-PnpDevice failed: %s", e)
 
-    # ── Tier 4: WMI Win32_PnPEntity (legacy fallback) ─────────────────────
     try:
         ps_cmd = (
             "Get-WmiObject -Query "
@@ -381,7 +388,6 @@ def get_scanners_wia() -> list:
     except Exception as e:
         log.warning("get_scanners_wia: WMI fallback failed: %s", e)
 
-    # ── Tier 5: Registry STI class key ────────────────────────────────────
     _STI_CLASS = "{6bdd1fc6-810f-11d0-bec7-08002be2092f}"
     try:
         import winreg
@@ -438,13 +444,6 @@ def get_scanners_wia() -> list:
 # ─── macOS scanner discovery ──────────────────────────────────────────────────
 
 def get_scanners_macos() -> list:
-    """
-    Four-tier macOS scanner discovery:
-      Tier 1 — scanimage -L        (SANE/Homebrew, USB + network)
-      Tier 2 — ImageCaptureCore    (native macOS ICA, USB flatbeds)
-      Tier 3 — eSCL port probe     (HP Smart relay, Wi-Fi/USB bridge)
-      Tier 4 — system_profiler     (raw USB hardware, no driver needed)
-    """
     scanners = []
     seen_names = set()
 
@@ -460,7 +459,6 @@ def get_scanners_macos() -> list:
                 "note":    note,
             })
 
-    # ── Tier 1: scanimage -L (SANE via Homebrew) ──────────────────────────
     try:
         result = subprocess.run(
             ["scanimage", "-L"],
@@ -486,7 +484,6 @@ def get_scanners_macos() -> list:
     except Exception as e:
         log.warning("get_scanners_macos: scanimage -L failed: %s", e)
 
-    # ── Tier 2: ImageCaptureCore (pyobjc) ────────────────────────────────
     try:
         import ImageCaptureCore as ICC
         from Foundation import NSRunLoop, NSDate, NSObject
@@ -531,7 +528,6 @@ def get_scanners_macos() -> list:
         browser.stop()
 
         for d in found_devices:
-            # device.name() can be empty for some printer-scanners
             name = d["name"] or d["usnStr"] or "Unknown Scanner"
             _add(d["name"] or name, name, "ImageCaptureCore", True)
 
@@ -544,7 +540,6 @@ def get_scanners_macos() -> list:
     except Exception as e:
         log.warning("get_scanners_macos: ImageCaptureCore probe failed: %s", e)
 
-    # ── Tier 3: eSCL localhost port probe (HP Smart relay) ────────────────
     try:
         escl_url = _find_escl_url(browse_timeout=10)
         import ssl
@@ -568,7 +563,6 @@ def get_scanners_macos() -> list:
     except Exception as e:
         log.info("get_scanners_macos: eSCL probe found nothing (%s)", e)
 
-    # ── Tier 4: system_profiler USB (raw hardware, no driver needed) ──────
     try:
         result = subprocess.run(
             ["system_profiler", "SPUSBDataType", "-json"],
@@ -586,7 +580,8 @@ def get_scanners_macos() -> list:
                 name = node.get("_name", "")
                 if re.search(
                     r"scan|printer|mfp|multifunction|aio|laser|inkjet|"
-                    r"officejet|deskjet|envy|pixma|workforce|mfc|dcpl",
+                    r"officejet|deskjet|envy|pixma|workforce|mfc|dcpl|"
+                    r"fi-\d|fujitsu|scansnap",
                     name, re.I,
                 ):
                     vendor  = node.get("manufacturer", "")
@@ -618,13 +613,6 @@ def get_scanners_macos() -> list:
 # ─── Linux scanner discovery ──────────────────────────────────────────────────
 
 def get_scanners_linux() -> list:
-    """
-    Four-tier Linux scanner discovery:
-      Tier 1 — python-sane          (SANE library, most reliable)
-      Tier 2 — scanimage -L         (SANE CLI, same backend different binding)
-      Tier 3 — lsusb                (raw USB hardware)
-      Tier 4 — udevadm / sysfs      (kernel device nodes)
-    """
     scanners = []
     seen = set()
 
@@ -640,7 +628,6 @@ def get_scanners_linux() -> list:
                 "note":    note,
             })
 
-    # ── Tier 1: python-sane ───────────────────────────────────────────────
     try:
         import sane
         sane.init()
@@ -660,7 +647,6 @@ def get_scanners_linux() -> list:
     except Exception as e:
         log.warning("get_scanners_linux: SANE init failed: %s", e)
 
-    # ── Tier 2: scanimage -L ──────────────────────────────────────────────
     try:
         result = subprocess.run(
             ["scanimage", "-L"],
@@ -685,7 +671,6 @@ def get_scanners_linux() -> list:
     except Exception as e:
         log.warning("get_scanners_linux: scanimage -L failed: %s", e)
 
-    # ── Tier 3: lsusb (raw USB, no SANE driver needed) ────────────────────
     try:
         result = subprocess.run(
             ["lsusb"], capture_output=True, text=True, timeout=20,
@@ -694,7 +679,8 @@ def get_scanners_linux() -> list:
         for line in result.stdout.splitlines():
             if re.search(
                 r"scan|printer|mfp|multifunction|aio|officejet|deskjet|"
-                r"envy|pixma|workforce|mfc|laser|inkjet|canon|epson|hp\b",
+                r"envy|pixma|workforce|mfc|laser|inkjet|canon|epson|hp\b|"
+                r"fi-\d|fujitsu|scansnap",
                 line, re.I,
             ):
                 m = re.search(r"ID\s+[\da-f:]+\s+(.+)", line, re.I)
@@ -717,7 +703,6 @@ def get_scanners_linux() -> list:
     except Exception as e:
         log.warning("get_scanners_linux: lsusb failed: %s", e)
 
-    # ── Tier 4: udevadm / sysfs kernel nodes ─────────────────────────────
     try:
         result = subprocess.run(
             ["udevadm", "info", "--export-db"],
@@ -739,7 +724,8 @@ def get_scanners_linux() -> list:
                     "scanner" in subsystem.lower()
                     or (
                         "usb" in subsystem.lower()
-                        and re.search(r"scan|mfp|multifunction", id_model, re.I)
+                        and re.search(r"scan|mfp|multifunction|fi-\d|fujitsu",
+                                      id_model, re.I)
                     )
                 ):
                     display = f"{id_vendor} {id_model}".strip()
@@ -794,6 +780,48 @@ def _img_to_png_bytes(img) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
+
+
+# ─── Image content signature (for duplicate-page detection) ──────────────────
+
+def _image_content_signature(png_bytes: bytes, size: int = 128) -> bytes:
+    """
+    Compute a compact perceptual signature of a scanned page.
+
+    Method: grayscale + downscale to (size × size), return raw pixel bytes.
+    128×128 (default) preserves enough detail to distinguish cheques from
+    the same book that differ only in handwritten date/amount/signature.
+    """
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(png_bytes)).convert("L")
+        small = img.resize((size, size))
+        return bytes(small.getdata())
+    except Exception as ex:
+        log.warning("content_signature: failed to hash page (%s)", ex)
+        return b""
+
+
+def _pages_are_duplicates(sig_a: bytes, sig_b: bytes,
+                            avg_diff_threshold: float = 1.0) -> tuple:
+    """
+    Return (is_duplicate, avg_diff) for two content signatures.
+
+    avg_diff is the mean absolute per-pixel difference (0–255 range).
+      - Identical re-scans of the same physical sheet: ~0.0–0.8
+      - Two cheques from the same cheque book (diff date/amount only): ~2–8
+      - Two cheques from different books: ~10–40
+      - Different documents entirely: ~30–120
+
+    Threshold 1.0 = only near-perfect duplicates trigger.
+    """
+    if not sig_a or not sig_b or len(sig_a) != len(sig_b):
+        return False, -1.0
+    total = 0
+    for a, b in zip(sig_a, sig_b):
+        total += abs(a - b)
+    avg = total / len(sig_a)
+    return avg < avg_diff_threshold, avg
 
 
 # ─── Document detection & cropping ───────────────────────────────────────────
@@ -867,10 +895,6 @@ def _build_pdf_from_jpegs(pages: list) -> bytes:
 
     _w(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
 
-    # Pre-calculate the Pages object number so every page dict can include
-    # the required /Parent entry.  Each page generates exactly 3 objects:
-    #   (1) image XObject  (2) content stream  (3) page dict
-    # Therefore: pages_ob = 3 * N + 1,  catalog = 3 * N + 2.
     pages_ob_n = len(pages) * 3 + 1
 
     page_ids = []
@@ -899,7 +923,7 @@ def _build_pdf_from_jpegs(pages: list) -> bytes:
         page_obj = _begin_obj()
         _w(
             f"<< /Type /Page\n"
-            f"   /Parent {pages_ob_n} 0 R\n"          # ← THE FIX
+            f"   /Parent {pages_ob_n} 0 R\n"
             f"   /MediaBox [0 0 {w_pt} {h_pt}]\n"
             f"   /Contents {cs_obj} 0 R\n"
             f"   /Resources << /XObject << /Im0 {img_obj} 0 R >> >>\n"
@@ -908,7 +932,7 @@ def _build_pdf_from_jpegs(pages: list) -> bytes:
         page_ids.append(page_obj)
 
     kids     = " ".join(f"{p} 0 R" for p in page_ids)
-    pages_ob = _begin_obj()          # will always equal pages_ob_n
+    pages_ob = _begin_obj()
     _w(f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>\nendobj\n")
 
     cat_obj = _begin_obj()
@@ -925,6 +949,7 @@ def _build_pdf_from_jpegs(pages: list) -> bytes:
         f"startxref\n{xref_pos}\n%%EOF\n"
     )
     return buf.getvalue()
+
 
 def _images_to_pdf(images_b64: list) -> bytes:
     from PIL import Image
@@ -1007,8 +1032,6 @@ def _get_scanimage_device() -> str:
     )
 
 
-# ─── ADF source name detection ────────────────────────────────────────────────
-
 def _pick_adf_source(device: str) -> str:
     try:
         result  = subprocess.run(
@@ -1090,8 +1113,6 @@ def _escl_cancel_active_jobs(base_url: str, ctx) -> int:
     return cancelled
 
 
-# ─── eSCL idle-wait ───────────────────────────────────────────────────────────
-
 def _escl_wait_for_idle(base_url: str, ctx, timeout: int = 20) -> str:
     status_url    = f"{base_url}/ScannerStatus"
     deadline      = time.time() + timeout
@@ -1107,30 +1128,12 @@ def _escl_wait_for_idle(base_url: str, ctx, timeout: int = 20) -> str:
                 body = resp.read().decode(errors="replace")
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                log.info(
-                    "eSCL ScannerStatus: 404 — endpoint absent; "
-                    "skipping idle-wait (attempt %d)", attempt,
-                )
                 return "Unknown"
-            log.warning(
-                "eSCL ScannerStatus attempt %d: HTTP %s — skipping idle-wait",
-                attempt, e.code,
-            )
             return "Unknown"
-        except Exception as ex:
-            log.warning(
-                "eSCL ScannerStatus attempt %d: %s — skipping idle-wait",
-                attempt, ex,
-            )
+        except Exception:
             return "Unknown"
 
         state, job_uris = _escl_parse_scanner_status(body)
-        snippet = body.replace("\n", " ").replace("\r", "")[:160].strip()
-        log.info(
-            "eSCL ScannerStatus (attempt %d): state=%s  jobs=%s  xml=…%s…",
-            attempt, state, job_uris if job_uris else "(none)", snippet,
-        )
-
         if state.lower() == "idle":
             return "Idle"
 
@@ -1138,25 +1141,15 @@ def _escl_wait_for_idle(base_url: str, ctx, timeout: int = 20) -> str:
             cancel_tried = True
             n = _escl_cancel_active_jobs(base_url, ctx)
             if n:
-                log.info(
-                    "eSCL ScannerStatus: cancelled %d job(s) — "
-                    "re-checking state in 2 s…", n,
-                )
                 time.sleep(2)
                 continue
 
         time.sleep(2)
 
-    log.warning(
-        "eSCL ScannerStatus: scanner still not Idle after %ds — "
-        "will attempt POST anyway", timeout,
-    )
     return state
 
 
-# ─── eSCL ADF ─────────────────────────────────────────────────────────────────
-
-def _scan_escl_http_adf(base_url: str) -> list:
+def _scan_escl_http_adf(base_url: str, progress_cb=None) -> list:
     import ssl
 
     scan_ns = "http://schemas.hp.com/imaging/escl/2011/05/03"
@@ -1183,183 +1176,81 @@ def _scan_escl_http_adf(base_url: str) -> list:
         "</scan:ScanSettings>"
     ).encode("utf-8")
 
-    log.info("eSCL ADF: checking scanner status before POST…")
-    final_idle_state = _escl_wait_for_idle(base_url, ctx, timeout=20)
-    log.info("eSCL ADF: pre-POST scanner state = %s", final_idle_state)
+    _escl_wait_for_idle(base_url, ctx, timeout=20)
 
-    MAX_POST_ATTEMPTS = 6
-    location          = None
-    last_post_err     = None
-    cancel_attempted  = False
-
-    for post_attempt in range(1, MAX_POST_ATTEMPTS + 1):
-        log.info(
-            "eSCL ADF: POST ScanJobs (InputSource=Feeder) — attempt %d/%d…",
-            post_attempt, MAX_POST_ATTEMPTS,
-        )
+    location = None
+    for post_attempt in range(1, 7):
         req = urllib.request.Request(
-            f"{base_url}/ScanJobs",
-            data=body,
-            headers={"Content-Type": "text/xml; charset=utf-8"},
-            method="POST",
+            f"{base_url}/ScanJobs", data=body,
+            headers={"Content-Type": "text/xml; charset=utf-8"}, method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
                 location = resp.headers.get("Location", "").strip()
             break
-
         except urllib.error.HTTPError as e:
-            body_err      = e.read().decode(errors="replace")
-            last_post_err = f"HTTP {e.code} {e.reason}: {body_err.strip()}"
-
             if e.code in (409, 503):
-                log.warning(
-                    "eSCL ADF POST attempt %d/%d: %s",
-                    post_attempt, MAX_POST_ATTEMPTS, last_post_err,
-                )
-
-                if not cancel_attempted:
-                    cancel_attempted = True
-                    log.info("eSCL ADF: 409 received — attempting active job cancellation…")
-                    n_cancelled = _escl_cancel_active_jobs(base_url, ctx)
-
-                    if n_cancelled:
-                        log.info(
-                            "eSCL ADF: %d job(s) cancelled — retrying POST in 1 s…",
-                            n_cancelled,
-                        )
-                        time.sleep(1)
-                        continue
-                    else:
-                        log.warning(
-                            "eSCL ADF: 409 with no cancellable jobs found — "
-                            "feeder may be empty.  Waiting 3 s…"
-                        )
-                        if post_attempt >= 3:
-                            raise RuntimeError(
-                                f"eSCL ADF: persistent HTTP 409 with no active "
-                                f"jobs to cancel.\n\n"
-                                f"This almost always means the document feeder "
-                                f"is empty.\n\n"
-                                f"  1. Load paper into the ADF tray.\n"
-                                f"  2. Check the scanner display / LED for a "
-                                f"     paper-jam or cover-open indicator.\n"
-                                f"  3. Verify the feeder is listed:\n"
-                                f"     curl {base_url}/ScannerCapabilities\n"
-                                f"     and look for "
-                                f"<InputSource>Feeder</InputSource>.\n\n"
-                                f"Last error: {last_post_err}"
-                            )
-                        time.sleep(3)
-                        continue
-
-                n_cancelled = _escl_cancel_active_jobs(base_url, ctx)
-                wait = 2 if post_attempt <= 3 else 3
-                log.info(
-                    "eSCL ADF: cancelled %d job(s); waiting %ds before next POST attempt…",
-                    n_cancelled, wait,
-                )
-                time.sleep(wait)
+                _escl_cancel_active_jobs(base_url, ctx)
+                time.sleep(2)
                 continue
-
-            raise RuntimeError(f"eSCL ADF ScanJobs POST failed: {last_post_err}")
-
-    if location is None:
-        raise RuntimeError(
-            f"eSCL ADF: scanner did not accept the ScanJob after "
-            f"{MAX_POST_ATTEMPTS} attempts.\n"
-            f"Last error: {last_post_err}\n\n"
-            f"Checklist:\n"
-            f"  • Is the document feeder loaded with paper?\n"
-            f"  • curl -v {base_url}/ScannerStatus\n"
-            f"  • curl -v {base_url}/ScannerCapabilities\n"
-            f"    confirm <InputSource>Feeder</InputSource> is listed."
-        )
+            raise RuntimeError(f"eSCL ADF POST failed: HTTP {e.code}")
 
     if not location:
-        raise RuntimeError(
-            "eSCL ADF: scanner accepted the job but returned no Location header."
-        )
+        raise RuntimeError("eSCL ADF: no Location header")
 
     job_url = urljoin(base_url, location).rstrip("/")
     doc_url = f"{job_url}/NextDocument"
-    log.info("eSCL ADF: job URL → %s", job_url)
 
-    pages    = []
+    pages = []
     page_num = 0
 
     while True:
         page_num += 1
-        log.info("eSCL ADF: waiting for page %d…", page_num)
-
-        raw_image  = None
+        raw_image = None
         feeder_end = False
 
         for attempt in range(1, 31):
             try:
-                with urllib.request.urlopen(
-                    doc_url, timeout=60, context=ctx
-                ) as resp:
+                with urllib.request.urlopen(doc_url, timeout=60, context=ctx) as resp:
                     raw_image = resp.read()
                 break
             except urllib.error.HTTPError as e:
                 if e.code == 404:
-                    log.info(
-                        "eSCL ADF: feeder empty (HTTP 404) — %d page(s) total",
-                        len(pages),
-                    )
                     feeder_end = True
                     break
                 if e.code in (503, 409):
-                    wait = 1.0 if attempt <= 10 else 2.0
-                    log.info(
-                        "  feeding next sheet (HTTP %s), waiting %.0fs… "
-                        "(attempt %d/30)", e.code, wait, attempt,
-                    )
-                    time.sleep(wait)
+                    time.sleep(1.0 if attempt <= 10 else 2.0)
                     continue
-                raise RuntimeError(
-                    f"eSCL ADF NextDocument (page {page_num}) "
-                    f"failed: HTTP {e.code} {e.reason}"
-                )
+                raise RuntimeError(f"eSCL NextDocument failed: HTTP {e.code}")
 
-        if feeder_end:
-            break
-
-        if raw_image is None:
-            if pages:
-                log.warning(
-                    "eSCL ADF: page %d never delivered after 30 attempts "
-                    "— treating as end-of-feeder", page_num,
-                )
-            else:
-                raise RuntimeError(
-                    "eSCL ADF: scanner never delivered page 1 after 30 attempts"
-                )
+        if feeder_end or raw_image is None:
             break
 
         png = _png_from_bytes(raw_image)
         pages.append(png)
-        log.info("eSCL ADF: page %d OK (%s bytes PNG)", page_num, f"{len(png):,}")
+        log.info("eSCL ADF: page %d OK", len(pages))
+        if progress_cb:
+            try:
+                progress_cb({
+                    "status": "progress",
+                    "page":   len(pages),
+                    "message": f"Scanned page {len(pages)}…",
+                })
+            except Exception:
+                pass
 
     if not pages:
-        raise RuntimeError(
-            "eSCL ADF returned no pages — is the document feeder loaded?"
-        )
+        raise RuntimeError("eSCL ADF returned no pages")
 
-    log.info("eSCL ADF: total %d page(s)", len(pages))
     return pages
 
-
-# ─── eSCL URL discovery helpers ───────────────────────────────────────────────
 
 def _save_escl_url_cache(url: str) -> None:
     try:
         with open(_ESCL_URL_CACHE, "w") as f:
             f.write(url.strip())
-        log.info("eSCL URL cached → %s", _ESCL_URL_CACHE)
-    except Exception as ex:
-        log.warning("eSCL URL cache write failed: %s", ex)
+    except Exception:
+        pass
 
 
 def _load_cached_escl_url() -> str:
@@ -1378,20 +1269,10 @@ def _verify_escl_url(base_url: str, timeout: float = 5.0) -> bool:
 
     probe_url = f"{base_url.rstrip('/')}/ScannerCapabilities"
     try:
-        with urllib.request.urlopen(
-            probe_url, timeout=timeout, context=ctx
-        ) as resp:
+        with urllib.request.urlopen(probe_url, timeout=timeout, context=ctx) as resp:
             body = resp.read(1024).decode(errors="replace")
-        if re.search(r"(?i)scanner", body):
-            log.info("eSCL verify: %s → alive", base_url)
-            return True
-        log.warning(
-            "eSCL verify: %s responded but body doesn't look like "
-            "ScannerCapabilities", base_url,
-        )
-        return False
-    except Exception as ex:
-        log.debug("eSCL verify: %s → %s", base_url, ex)
+        return bool(re.search(r"(?i)scanner", body))
+    except Exception:
         return False
 
 
@@ -1399,52 +1280,28 @@ def _probe_localhost_escl_ports(
     port_range: range = range(59000, 59201),
     per_port_timeout: float = 1.5,
 ) -> str:
-    log.info(
-        "eSCL localhost probe: scanning ports %d–%d (timeout=%.1fs each)…",
-        port_range.start, port_range.stop - 1, per_port_timeout,
-    )
     for port in port_range:
         url = f"http://localhost:{port}/eSCL/ScannerCapabilities"
         try:
             with urllib.request.urlopen(url, timeout=per_port_timeout) as resp:
                 body = resp.read(512).decode(errors="replace")
             if re.search(r"(?i)scanner", body):
-                base = f"http://localhost:{port}/eSCL"
-                log.info("eSCL localhost probe: relay found at %s", base)
-                return base
-        except urllib.error.HTTPError as e:
-            log.debug("eSCL probe port %d: HTTP %s", port, e.code)
+                return f"http://localhost:{port}/eSCL"
         except Exception:
             pass
-
-    log.info("eSCL localhost probe: no relay found in port range")
     return ""
 
 
 def _find_escl_url(browse_timeout: int = 5) -> str:
-    # Tier 1: cached URL
     cached = _load_cached_escl_url()
-    if cached:
-        log.info("eSCL discovery: trying cached URL %s…", cached)
-        if _verify_escl_url(cached):
-            log.info("eSCL discovery: cache hit → %s", cached)
-            return cached
-        log.info(
-            "eSCL discovery: cached URL no longer responds — "
-            "falling through to port probe"
-        )
+    if cached and _verify_escl_url(cached):
+        return cached
 
-    # Tier 2: localhost port probe
     probed = _probe_localhost_escl_ports()
     if probed:
         _save_escl_url_cache(probed)
         return probed
 
-    # Tier 3: Bonjour
-    log.info(
-        "eSCL discovery: localhost probe found nothing — "
-        "falling through to Bonjour…"
-    )
     url = _find_escl_url_bonjour(browse_timeout=browse_timeout)
     _save_escl_url_cache(url)
     return url
@@ -1452,7 +1309,6 @@ def _find_escl_url(browse_timeout: int = 5) -> str:
 
 def _find_escl_url_bonjour(browse_timeout: int = 5) -> str:
     for service_type in ("_uscan._tcp", "_uscans._tcp", "_scanner._tcp"):
-        log.info("Bonjour: browsing %s for %ds…", service_type, browse_timeout)
         browse = subprocess.Popen(
             ["dns-sd", "-B", service_type, "local"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
@@ -1470,13 +1326,11 @@ def _find_escl_url_bonjour(browse_timeout: int = 5) -> str:
                     service_name = (
                         " ".join(parts[6:]).replace("\\032", " ").strip()
                     )
-                    log.info("Bonjour found: %r (%s)", service_name, service_type)
                     break
 
         if not service_name:
             continue
 
-        log.info("Bonjour: resolving %r…", service_name)
         lookup = subprocess.Popen(
             ["dns-sd", "-L", service_name, service_type, "local"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
@@ -1504,20 +1358,17 @@ def _find_escl_url_bonjour(browse_timeout: int = 5) -> str:
             continue
 
         scheme = "https" if "uscans" in service_type else "http"
-        url    = f"{scheme}://{host}:{port}{path}"
-        log.info("eSCL base URL: %s", url)
-        return url
+        return f"{scheme}://{host}:{port}{path}"
 
-    raise RuntimeError(
-        "No eSCL scanner found via Bonjour.\n"
-        "  • Ensure the scanner is powered on and connected.\n"
-        "  • Verify with: dns-sd -B _uscan._tcp local"
-    )
+    raise RuntimeError("No eSCL scanner found via Bonjour.")
 
 
 # ─── Windows TWAIN ADF ───────────────────────────────────────────────────────
 
-def _scan_twain_adf(show_ui: bool) -> list:
+def _scan_twain_adf(show_ui: bool, progress_cb=None) -> list:
+    """
+    TWAIN-driven ADF batch scan (Windows).  Tuned for PaperStream IP.
+    """
     import twain
     from PIL import Image
 
@@ -1526,54 +1377,59 @@ def _scan_twain_adf(show_ui: bool) -> list:
     try:
         sources = sm.GetSourceList()
         if not sources:
-            raise RuntimeError(
-                "No TWAIN scanner found. "
-                "Make sure your scanner driver is installed."
-            )
+            raise RuntimeError("No TWAIN scanner found.")
         log.info("TWAIN ADF: sources = %s", sources)
         ss = sm.OpenSource(sources[0])
         try:
-            for cap, typ, val in [
-                (twain.ICAP_XRESOLUTION, twain.TWTY_FIX32, 200.0),
-                (twain.ICAP_YRESOLUTION, twain.TWTY_FIX32, 200.0),
+            for cap, val in [
+                (twain.ICAP_XRESOLUTION, 200.0),
+                (twain.ICAP_YRESOLUTION, 200.0),
             ]:
                 try:
-                    ss.SetCapability(cap, typ, val)
-                except Exception as ce:
-                    log.warning("TWAIN cap %s: %s", cap, ce)
+                    ss.SetCapability(cap, twain.TWTY_FIX32, val)
+                except Exception:
+                    pass
 
-            for cap, typ, val in [
-                (twain.CAP_FEEDERENABLED, twain.TWTY_BOOL, True),
-                (twain.CAP_AUTOFEED,      twain.TWTY_BOOL, True),
+            try:
+                ss.SetCapability(twain.ICAP_PIXELTYPE, twain.TWTY_UINT16, 2)
+                ss.SetCapability(twain.ICAP_BITDEPTH,  twain.TWTY_UINT16, 8)
+            except Exception:
+                pass
+
+            for cap, val in [
+                (twain.CAP_FEEDERENABLED, True),
+                (twain.CAP_AUTOFEED,      True),
+                (twain.CAP_AUTOSCAN,      True),
+                (twain.CAP_DUPLEXENABLED, False),
+                (twain.CAP_INDICATORS,    False),
             ]:
                 try:
-                    ss.SetCapability(cap, typ, val)
-                except Exception as ce:
-                    log.warning("TWAIN ADF cap %s: %s", cap, ce)
+                    ss.SetCapability(cap, twain.TWTY_BOOL, val)
+                except Exception:
+                    pass
 
             try:
                 ss.SetCapability(twain.CAP_XFERCOUNT, twain.TWTY_INT16, -1)
-            except Exception as ce:
-                log.warning("TWAIN XFERCOUNT: %s", ce)
+            except Exception:
+                pass
 
-            ss.RequestAcquire(int(show_ui), int(show_ui))
+            ss.RequestAcquire(int(show_ui), 1)
 
+            page_num = 0
             while True:
+                page_num += 1
                 try:
                     rv = ss.XferImageNatively()
                 except Exception as e:
                     if pages:
-                        log.info(
-                            "TWAIN ADF: feeder empty after %d page(s) (%s)",
-                            len(pages), e,
-                        )
-                    else:
-                        raise RuntimeError(
-                            f"TWAIN ADF: scan failed before acquiring any page — {e}"
-                        )
-                    break
+                        break
+                    raise RuntimeError(f"TWAIN ADF page 1 failed: {e}")
 
                 if rv is None:
+                    if not pages:
+                        raise RuntimeError(
+                            "TWAIN ADF: no image on page 1"
+                        )
                     break
 
                 handle, more = rv
@@ -1584,7 +1440,16 @@ def _scan_twain_adf(show_ui: bool) -> list:
                 buf = io.BytesIO()
                 img.save(buf, format="PNG", optimize=True)
                 pages.append(buf.getvalue())
-                log.info("TWAIN ADF: page %d acquired (more=%s)", len(pages), more)
+                log.info("TWAIN ADF: page %d acquired", len(pages))
+                if progress_cb:
+                    try:
+                        progress_cb({
+                            "status": "progress",
+                            "page":   len(pages),
+                            "message": f"Scanned page {len(pages)}…",
+                        })
+                    except Exception:
+                        pass
 
                 if not more:
                     break
@@ -1594,16 +1459,13 @@ def _scan_twain_adf(show_ui: bool) -> list:
         sm.destroy()
 
     if not pages:
-        raise RuntimeError(
-            "TWAIN ADF returned no pages — is the document feeder loaded?"
-        )
-    log.info("TWAIN ADF: total %d page(s)", len(pages))
+        raise RuntimeError("TWAIN ADF returned no pages")
     return pages
 
 
 # ─── Linux SANE ADF ──────────────────────────────────────────────────────────
 
-def _scan_sane_adf() -> list:
+def _scan_sane_adf(progress_cb=None) -> list:
     import sane
     from PIL import Image
 
@@ -1612,8 +1474,7 @@ def _scan_sane_adf() -> list:
     try:
         devices = sane.get_devices()
         if not devices:
-            raise RuntimeError("No SANE scanner found.  Check:  scanimage -L")
-        log.info("SANE ADF: device = %s", devices[0][0])
+            raise RuntimeError("No SANE scanner found.")
         dev = sane.open(devices[0][0])
         try:
             dev.resolution = 200
@@ -1622,54 +1483,44 @@ def _scan_sane_adf() -> list:
             for src_name in ("ADF", "Automatic Document Feeder", "adf"):
                 try:
                     dev.source = src_name
-                    log.info("SANE ADF: source set to %r", src_name)
                     break
                 except Exception:
                     pass
-            else:
-                log.warning("SANE ADF: could not set ADF source — using default")
 
-            page_num = 0
             while True:
                 try:
                     img = dev.scan()
-                except Exception as e:
-                    err = str(e).lower()
-                    if any(
-                        k in err
-                        for k in ("no document", "eof", "out of document", "paper")
-                    ):
-                        log.info("SANE ADF: feeder empty (%s)", e)
-                    elif pages:
-                        log.info("SANE ADF: end of feeder (%s)", e)
-                    else:
-                        raise RuntimeError(f"SANE ADF scan failed: {e}")
+                except Exception:
                     break
 
-                page_num += 1
                 buf = io.BytesIO()
                 img.save(buf, format="PNG")
                 pages.append(buf.getvalue())
-                log.info("SANE ADF: page %d scanned", page_num)
+                log.info("SANE ADF: page %d scanned", len(pages))
+                if progress_cb:
+                    try:
+                        progress_cb({
+                            "status": "progress",
+                            "page":   len(pages),
+                            "message": f"Scanned page {len(pages)}…",
+                        })
+                    except Exception:
+                        pass
         finally:
             dev.close()
     finally:
         sane.exit()
 
     if not pages:
-        raise RuntimeError("SANE ADF returned no pages — is the feeder loaded?")
-    log.info("SANE ADF: total %d page(s)", len(pages))
+        raise RuntimeError("SANE ADF returned no pages")
     return pages
 
 
-# ─── scanimage ADF ───────────────────────────────────────────────────────────
-
-def _scan_scanimage_adf() -> list:
+def _scan_scanimage_adf(progress_cb=None) -> list:
     import glob
 
     device     = _get_scanimage_device()
     adf_source = _pick_adf_source(device)
-    log.info("scanimage ADF: device=%s  source=%s", device, adf_source)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         pattern = os.path.join(tmpdir, "page%04d.png")
@@ -1686,111 +1537,160 @@ def _scan_scanimage_adf() -> list:
         if adf_source:
             cmd.append(f"--source={adf_source}")
 
-        result     = subprocess.run(
+        result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=300,
             **_NO_WINDOW,
         )
         page_files = sorted(glob.glob(os.path.join(tmpdir, "page*.png")))
 
         if not page_files and adf_source:
-            stderr_lower = result.stderr.lower()
-            if any(
-                k in stderr_lower
-                for k in ("invalid", "not supported", "bad option")
-            ):
-                log.warning(
-                    "scanimage ADF: --source=%s rejected — "
-                    "retrying without --source…", adf_source,
-                )
-                cmd_retry  = [c for c in cmd if not c.startswith("--source=")]
-                result     = subprocess.run(
-                    cmd_retry, capture_output=True, text=True, timeout=300,
-                    **_NO_WINDOW,
-                )
-                page_files = sorted(glob.glob(os.path.join(tmpdir, "page*.png")))
+            cmd_retry = [c for c in cmd if not c.startswith("--source=")]
+            result = subprocess.run(
+                cmd_retry, capture_output=True, text=True, timeout=300,
+                **_NO_WINDOW,
+            )
+            page_files = sorted(glob.glob(os.path.join(tmpdir, "page*.png")))
 
         if not page_files:
             raise RuntimeError(
-                f"scanimage ADF returned no pages.\n"
-                f"stderr: {result.stderr.strip()}\n"
-                f"Try manually:\n"
-                f"  scanimage -d '{device}' --source=ADF "
-                f"--format=png --batch --batch-start=1 "
-                f"--output-file=/tmp/page%04d.png"
+                f"scanimage ADF returned no pages.\nstderr: {result.stderr.strip()}"
             )
 
         pages = []
         for path in page_files:
             with open(path, "rb") as f:
                 pages.append(f.read())
-            log.info("scanimage ADF: loaded %s", os.path.basename(path))
+            if progress_cb:
+                try:
+                    progress_cb({
+                        "status": "progress",
+                        "page":   len(pages),
+                        "message": f"Scanned page {len(pages)}…",
+                    })
+                except Exception:
+                    pass
 
-    log.info("scanimage ADF: total %d page(s)", len(pages))
     return pages
 
 
-# ─── macOS ADF fallback chain ─────────────────────────────────────────────────
-
-def _scan_macos_adf() -> list:
-    last_err = None
-
+def _scan_macos_adf(progress_cb=None) -> list:
     try:
-        return _scan_scanimage_adf()
+        return _scan_scanimage_adf(progress_cb=progress_cb)
     except FileNotFoundError:
-        log.info("scanimage not installed → trying eSCL ADF…")
+        pass
     except Exception as e:
         log.warning("scanimage ADF failed (%s) → trying eSCL ADF…", e)
-        last_err = e
 
-    try:
-        base_url = _find_escl_url()
-        return _scan_escl_http_adf(base_url)
-    except Exception as e:
-        log.warning("eSCL ADF failed (%s)", e)
-        last_err = e
-
-    raise RuntimeError(
-        f"ADF scan failed on macOS — both scanimage and eSCL paths "
-        f"exhausted.\nLast error: {last_err}\n\n"
-        f"Checklist:\n"
-        f"  • Is the document feeder loaded?\n"
-        f"  • Is the HP Smart app running?  "
-        f"(check Activity Monitor for 'HP Smart')\n"
-        f"  • scanimage: run  scanimage -L  and check --source options\n"
-        f"  • eSCL port probe: run the bridge with --log-level=DEBUG and\n"
-        f"    look for 'eSCL localhost probe' lines\n"
-        f"  • eSCL manual check:\n"
-        f"    curl http://localhost:59000/eSCL/ScannerCapabilities\n"
-        f"    (try ports 59000-59010 if 59000 doesn't respond)"
-    )
+    return _scan_escl_http_adf(_find_escl_url(), progress_cb=progress_cb)
 
 
 # ─── ADF platform dispatch ────────────────────────────────────────────────────
 
-def scan_adf() -> list:
+def scan_adf(progress_cb=None) -> list:
+    global _TWAIN_KNOWN_BROKEN
+
     if sys.platform == "win32":
-        try:
-            return _scan_twain_adf(SHOW_UI)
-        except ImportError:
-            log.info("TWAIN package not installed — trying WIA ADF…")
-        except Exception as e:
-            log.warning("TWAIN ADF failed (%s) — trying WIA ADF…", e)
-        return _scan_wia_adf()
+        if not _TWAIN_KNOWN_BROKEN:
+            try:
+                return _scan_twain_adf(SHOW_UI, progress_cb=progress_cb)
+            except ImportError:
+                log.info("TWAIN package not installed — using WIA ADF")
+                _TWAIN_KNOWN_BROKEN = True
+            except Exception as e:
+                log.warning(
+                    "TWAIN ADF failed (%s) — using WIA ADF (cached)", e,
+                )
+                _TWAIN_KNOWN_BROKEN = True
+        else:
+            log.info("TWAIN ADF known-broken — using WIA ADF")
+        return _scan_wia_adf(progress_cb=progress_cb)
     elif sys.platform.startswith("linux"):
-        return _scan_sane_adf()
+        return _scan_sane_adf(progress_cb=progress_cb)
     elif sys.platform == "darwin":
-        return _scan_macos_adf()
+        return _scan_macos_adf(progress_cb=progress_cb)
     else:
         raise RuntimeError(f"ADF not supported on platform: {sys.platform}")
 
 
-def _scan_wia_adf() -> list:
+# ─── WIA property helpers (enumerate by PropertyID) ──────────────────────────
+
+def _wia_find_prop(obj, prop_id: int):
+    try:
+        props = obj.Properties
+        count = props.Count
+    except Exception:
+        return None
+    for i in range(1, count + 1):
+        try:
+            p = props.Item(i)
+            if int(p.PropertyID) == int(prop_id):
+                return p
+        except Exception:
+            continue
+    return None
+
+
+def _wia_set_prop(obj, prop_id: int, value, label: str) -> bool:
+    p = _wia_find_prop(obj, prop_id)
+    if p is None:
+        log.info("WIA ADF: %s prop %s not found on this device", label, prop_id)
+        return False
+    try:
+        p.Value = value
+        log.info("WIA ADF: %s prop %s = %s ✓", label, prop_id, value)
+        return True
+    except Exception as ex:
+        log.info("WIA ADF: %s prop %s = %s ✗ (%s)", label, prop_id, value, ex)
+        return False
+
+
+def _wia_get_prop(obj, prop_id: int, default=None):
+    p = _wia_find_prop(obj, prop_id)
+    if p is None:
+        return default
+    try:
+        return p.Value
+    except Exception:
+        return default
+
+
+# ─── Windows WIA ADF (v1.7.11 — two-factor duplicate detection) ──────────────
+
+def _scan_wia_adf(progress_cb=None) -> list:
+    """
+    WIA-driven ADF batch scan (Windows).
+
+    End-of-feeder detection strategy (in priority order):
+      1. WIA_ERROR_PAPER_EMPTY  (proper COM error — cleanest).
+      2. WIA_DPS_DOCUMENT_HANDLING_STATUS bit0 (FEED_READY) polled.
+      3. TWO-FACTOR duplicate check (v1.7.11 fix for cheque-book scans):
+           a. PNG byte-size within BYTE_DIFF_TOLERANCE of previous, AND
+           b. Content signature avg per-pixel diff < AVG_DIFF_THRESHOLD.
+         Both conditions must hold — this eliminates the v1.7.10 false-
+         positives on cheques from the same book that share a printed
+         template.
+      4. MAX_PAGES hard safety cap.
+    """
     import win32com.client
     import pywintypes
 
-    PNG_FMT              = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
-    WIA_ERROR_PAPER_EMPTY = -2145320957  # 0x80210003
-    WIA_ERROR_PAPER_JAM   = -2145320958  # 0x80210002
+    PNG_FMT               = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
+    WIA_ERROR_PAPER_EMPTY = -2145320957   # 0x80210003
+    WIA_ERROR_PAPER_JAM   = -2145320958   # 0x80210002
+
+    WIA_DPS_DOCUMENT_HANDLING_SELECT = 3088   # 1=FEEDER, 2=FLATBED
+    WIA_DPS_DOCUMENT_HANDLING_STATUS = 3087   # bitmask; bit0 = FEED_READY
+    WIA_DPS_PAGES                    = 3096
+    WIA_IPS_PAGES                    = 3096
+    WIA_IPS_XRES                     = 6147
+    WIA_IPS_YRES                     = 6148
+    WIA_IPS_CUR_INTENT               = 6146
+
+    # Two-factor duplicate detection thresholds
+    AVG_DIFF_THRESHOLD  = 1.0   # per-pixel avg diff on 128×128 grayscale
+    BYTE_DIFF_TOLERANCE = 300   # PNG byte-size difference in bytes
+
+    MAX_PAGES = 500
 
     dm     = win32com.client.Dispatch("WIA.DeviceManager")
     device = None
@@ -1810,24 +1710,50 @@ def _scan_wia_adf() -> list:
     if device is None:
         raise RuntimeError("WIA ADF: no scanner device found")
 
-    def _set_prop(prop_id, value):
-        try:
-            device.Properties(prop_id).Value = value
-        except Exception as ex:
-            log.warning("WIA ADF: set prop %s=%s → %s", prop_id, value, ex)
-
-    _set_prop(3088, 1)  # WIA_DPS_DOCUMENT_HANDLING_SELECT: FEEDER
-    _set_prop(3096, 0)  # WIA_DPS_PAGES: ALL_PAGES
+    _wia_set_prop(device, WIA_DPS_DOCUMENT_HANDLING_SELECT, 1, "device")
+    _wia_set_prop(device, WIA_DPS_PAGES,                    0, "device")
 
     if device.Items.Count == 0:
         raise RuntimeError("WIA ADF: scanner returned no scan items")
 
-    item     = device.Items.Item(1)
-    pages    = []
-    page_num = 0
+    item = device.Items.Item(1)
+
+    _wia_set_prop(item, WIA_IPS_PAGES,      0,   "item")
+    _wia_set_prop(item, WIA_IPS_XRES,       200, "item")
+    _wia_set_prop(item, WIA_IPS_YRES,       200, "item")
+    _wia_set_prop(item, WIA_IPS_CUR_INTENT, 1,   "item")
+
+    status = _wia_get_prop(device, WIA_DPS_DOCUMENT_HANDLING_STATUS)
+    if isinstance(status, int) and status >= 0:
+        log.info(
+            "WIA ADF: DOCUMENT_HANDLING_STATUS = 0x%X (bit0=FEED_READY)",
+            status,
+        )
+    else:
+        log.info("WIA ADF: DOCUMENT_HANDLING_STATUS not exposed")
+
+    pages     = []
+    prev_sig  = None
+    prev_size = 0
+    page_num  = 0
 
     while True:
         page_num += 1
+
+        if page_num > MAX_PAGES:
+            log.warning("WIA ADF: hit safety limit of %d pages", MAX_PAGES)
+            break
+
+        status = _wia_get_prop(device, WIA_DPS_DOCUMENT_HANDLING_STATUS)
+        if isinstance(status, int) and status >= 0:
+            feed_ready = bool(status & 0x01)
+            if not feed_ready and pages:
+                log.info(
+                    "WIA ADF: STATUS=0x%X — feeder empty after %d page(s)",
+                    status, len(pages),
+                )
+                break
+
         log.info("WIA ADF: acquiring page %d…", page_num)
         tmp_path = tempfile.mktemp(suffix=".png")
         try:
@@ -1845,14 +1771,62 @@ def _scan_wia_adf() -> list:
             except Exception as conv_err:
                 if pages:
                     log.info(
-                        "WIA ADF: invalid image on page %d (%s) "
-                        "— treating as end-of-feeder", page_num, conv_err,
+                        "WIA ADF: invalid image on page %d (%s) — end-of-feeder",
+                        page_num, conv_err,
                     )
                     break
-                raise RuntimeError(f"WIA ADF: page 1 image is invalid: {conv_err}")
+                raise RuntimeError(f"WIA ADF: page 1 invalid: {conv_err}")
+
+            # ── Two-factor duplicate check ───────────────────────────────
+            size = len(png_data)
+            curr_sig = _image_content_signature(png_data)
+
+            if pages and prev_sig is not None:
+                byte_diff = abs(size - prev_size)
+                byte_match = byte_diff <= BYTE_DIFF_TOLERANCE
+
+                if byte_match:
+                    is_dup, avg_diff = _pages_are_duplicates(
+                        prev_sig, curr_sig, AVG_DIFF_THRESHOLD,
+                    )
+                    if is_dup:
+                        log.warning(
+                            "WIA ADF: page %d is a re-scan of page %d "
+                            "(byte Δ=%d ≤ %d, pixel avg diff=%.2f < %.1f) "
+                            "— feeder empty; discarding & stopping.",
+                            page_num, len(pages),
+                            byte_diff, BYTE_DIFF_TOLERANCE,
+                            avg_diff, AVG_DIFF_THRESHOLD,
+                        )
+                        break
+                    else:
+                        log.info(
+                            "WIA ADF: page %d byte-close but content differs "
+                            "(byte Δ=%d, pixel avg diff=%.2f) — keeping",
+                            page_num, byte_diff, avg_diff,
+                        )
+                else:
+                    log.info(
+                        "WIA ADF: page %d byte-size differs (Δ=%d > %d) — keeping",
+                        page_num, byte_diff, BYTE_DIFF_TOLERANCE,
+                    )
 
             pages.append(png_data)
-            log.info("WIA ADF: page %d OK (%s bytes PNG)", page_num, f"{len(png_data):,}")
+            prev_sig  = curr_sig or prev_sig
+            prev_size = size
+            log.info(
+                "WIA ADF: page %d OK (%s bytes PNG)",
+                len(pages), f"{len(png_data):,}",
+            )
+            if progress_cb:
+                try:
+                    progress_cb({
+                        "status":  "progress",
+                        "page":    len(pages),
+                        "message": f"Scanned page {len(pages)}…",
+                    })
+                except Exception:
+                    pass
 
         except pywintypes.com_error as e:
             hresult = e.args[0] if e.args else 0
@@ -1862,20 +1836,18 @@ def _scan_wia_adf() -> list:
                 raise RuntimeError("WIA ADF: paper jam detected")
             elif pages:
                 log.warning(
-                    "WIA ADF: page %d COM error (0x%08X) — "
-                    "treating as end-of-feeder: %s",
+                    "WIA ADF: page %d COM error (0x%08X) — end-of-feeder: %s",
                     page_num, hresult & 0xFFFFFFFF, e,
                 )
             else:
                 raise RuntimeError(
-                    f"WIA ADF: scan failed on page 1 "
-                    f"(0x{hresult & 0xFFFFFFFF:08X}): {e}"
+                    f"WIA ADF: page 1 failed (0x{hresult & 0xFFFFFFFF:08X}): {e}"
                 )
             break
 
         except Exception as e:
             if pages:
-                log.warning("WIA ADF: page %d error — treating as end: %s", page_num, e)
+                log.warning("WIA ADF: page %d error — end: %s", page_num, e)
                 break
             raise RuntimeError(f"WIA ADF: scan failed: {e}")
 
@@ -1902,10 +1874,7 @@ def _scan_twain(show_ui: bool) -> bytes:
     try:
         sources = sm.GetSourceList()
         if not sources:
-            raise RuntimeError(
-                "No TWAIN scanner found. "
-                "Make sure your scanner driver is installed."
-            )
+            raise RuntimeError("No TWAIN scanner found.")
         log.info("TWAIN sources: %s", sources)
         ss = sm.OpenSource(sources[0])
         try:
@@ -1915,10 +1884,21 @@ def _scan_twain(show_ui: bool) -> bytes:
             ]:
                 try:
                     ss.SetCapability(cap, twain.TWTY_FIX32, val)
-                except Exception as e:
-                    log.warning("Could not set cap %s: %s", cap, e)
+                except Exception:
+                    pass
 
-            ss.RequestAcquire(int(show_ui), int(show_ui))
+            try:
+                ss.SetCapability(twain.ICAP_PIXELTYPE, twain.TWTY_UINT16, 2)
+                ss.SetCapability(twain.ICAP_BITDEPTH,  twain.TWTY_UINT16, 8)
+            except Exception:
+                pass
+
+            try:
+                ss.SetCapability(twain.CAP_INDICATORS, twain.TWTY_BOOL, False)
+            except Exception:
+                pass
+
+            ss.RequestAcquire(int(show_ui), 1)
             rv = ss.XferImageNatively()
             if not rv:
                 raise RuntimeError("Scanner returned no image.")
@@ -1930,7 +1910,6 @@ def _scan_twain(show_ui: bool) -> bytes:
             img = Image.open(io.BytesIO(bmp_data))
             buf = io.BytesIO()
             img.save(buf, format="PNG", optimize=True)
-            log.info("TWAIN scan OK — size %s px", img.size)
             return buf.getvalue()
         finally:
             ss.destroy()
@@ -1981,8 +1960,7 @@ def scan_linux() -> bytes:
     try:
         devices = sane.get_devices()
         if not devices:
-            raise RuntimeError("No SANE scanner found.  Check: scanimage -L")
-        log.info("SANE devices: %s", devices)
+            raise RuntimeError("No SANE scanner found.")
         dev = sane.open(devices[0][0])
         try:
             dev.resolution = 200
@@ -1990,7 +1968,6 @@ def scan_linux() -> bytes:
             img = dev.scan()
             buf = io.BytesIO()
             img.save(buf, format="PNG")
-            log.info("SANE scan OK — size %s px", img.size)
             return buf.getvalue()
         finally:
             dev.close()
@@ -2001,9 +1978,7 @@ def scan_linux() -> bytes:
 # ─── macOS: single-page paths ─────────────────────────────────────────────────
 
 def _scan_via_scanimage() -> bytes:
-    log.info("macOS: trying scanimage (SANE)…")
     device = _get_scanimage_device()
-    log.info("scanimage device: %s", device)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = tmp.name
@@ -2021,11 +1996,9 @@ def _scan_via_scanimage() -> bytes:
             **_NO_WINDOW,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"scanimage scan failed: {result.stderr.strip()}")
+            raise RuntimeError(f"scanimage failed: {result.stderr.strip()}")
         with open(tmp_path, "rb") as f:
-            data = f.read()
-        log.info("scanimage scan OK — %s bytes", f"{len(data):,}")
-        return data
+            return f.read()
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -2056,7 +2029,6 @@ def _scan_escl_http(base_url: str) -> bytes:
     ctx.check_hostname = False
     ctx.verify_mode    = ssl.CERT_NONE
 
-    log.info("eSCL: POST ScanJobs → %s/ScanJobs", base_url)
     req = urllib.request.Request(
         f"{base_url}/ScanJobs", data=body,
         headers={"Content-Type": "text/xml; charset=utf-8"}, method="POST",
@@ -2065,45 +2037,27 @@ def _scan_escl_http(base_url: str) -> bytes:
         with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
             location = resp.headers.get("Location", "").strip()
     except urllib.error.HTTPError as e:
-        raise RuntimeError(
-            f"eSCL ScanJobs POST failed: HTTP {e.code} {e.reason}\n"
-            f"{e.read().decode(errors='replace')}"
-        )
+        raise RuntimeError(f"eSCL ScanJobs POST failed: HTTP {e.code}")
 
     if not location:
-        raise RuntimeError(
-            "eSCL: scanner accepted the job but returned no Location header."
-        )
+        raise RuntimeError("eSCL: no Location header")
 
     job_url   = urljoin(base_url, location).rstrip("/")
     image_url = f"{job_url}/NextDocument"
-    log.info("eSCL: job URL → %s", job_url)
-    last_err  = None
 
     for attempt in range(1, 13):
         try:
-            log.info("eSCL: GET NextDocument (attempt %d)…", attempt)
-            with urllib.request.urlopen(
-                image_url, timeout=60, context=ctx
-            ) as resp:
+            with urllib.request.urlopen(image_url, timeout=60, context=ctx) as resp:
                 raw_image = resp.read()
             break
         except urllib.error.HTTPError as e:
-            last_err = e
             if e.code in (404, 503):
-                wait = 2 if attempt < 6 else 4
-                log.info("  scanner not ready (%s), waiting %ds…", e.code, wait)
-                time.sleep(wait)
+                time.sleep(2 if attempt < 6 else 4)
                 continue
-            raise RuntimeError(
-                f"eSCL NextDocument failed: HTTP {e.code} {e.reason}"
-            )
+            raise RuntimeError(f"eSCL NextDocument failed: HTTP {e.code}")
     else:
-        raise RuntimeError(
-            f"eSCL NextDocument still not ready after 12 attempts: {last_err}"
-        )
+        raise RuntimeError("eSCL NextDocument still not ready")
 
-    log.info("eSCL: raw image %s bytes", f"{len(raw_image):,}")
     return _png_from_bytes(raw_image)
 
 
@@ -2118,13 +2072,10 @@ def _get_ica_delegate_cls(ICC):
     from Foundation import NSObject
 
     class _ICABridgeDelegate(NSObject):
-        def deviceBrowser_didAddDevice_moreComing_(
-            self, browser, device, more
-        ):
+        def deviceBrowser_didAddDevice_moreComing_(self, browser, device, more):
             if self._state.get("device") is not None:
                 return
             if device.type() == ICC.ICScannerDeviceType:
-                log.info("ICA: found scanner → %s", device.name())
                 self._state["device"] = device
                 device.setDelegate_(self)
                 device.requestOpenSession()
@@ -2139,41 +2090,32 @@ def _get_ica_delegate_cls(ICC):
                 self._ev_opened.set()
                 self._ev_done.set()
                 return
-            log.info("ICA: session open — selecting flatbed unit…")
-            device.requestSelectFunctionalUnit_(
-                ICC.ICScannerFunctionalUnitTypeFlatbed
-            )
+            device.requestSelectFunctionalUnit_(ICC.ICScannerFunctionalUnitTypeFlatbed)
 
         def device_didCloseSessionWithError_(self, device, error):
             pass
 
         def didRemoveDevice_(self, device):
             if not self._ev_done.is_set():
-                self._state["err"] = "ICA: scanner disconnected during scan."
+                self._state["err"] = "ICA: scanner disconnected."
                 self._ev_done.set()
 
-        def scannerDevice_didSelectFunctionalUnit_error_(
-            self, scanner, unit, error
-        ):
+        def scannerDevice_didSelectFunctionalUnit_error_(self, scanner, unit, error):
             if error:
                 self._state["err"] = str(error.localizedDescription())
                 self._ev_opened.set()
                 self._ev_done.set()
                 return
-            log.info("ICA: flatbed unit ready — configuring…")
             unit.setResolution_(200)
             unit.setPixelDataType_(0)
             self._ev_opened.set()
-            log.info("ICA: requesting scan…")
             scanner.requestScan()
 
         def scannerDevice_didScanToURL_(self, scanner, url):
-            path = str(url.path())
-            log.info("ICA: image written → %s", path)
             try:
-                self._state["png"] = _png_from_path(path)
+                self._state["png"] = _png_from_path(str(url.path()))
             except Exception as e:
-                self._state["err"] = f"ICA image convert: {e}"
+                self._state["err"] = f"ICA convert: {e}"
             finally:
                 self._ev_done.set()
 
@@ -2193,11 +2135,9 @@ def _get_ica_delegate_cls(ICC):
                 elif url:
                     self._state["png"] = _png_from_path(str(url.path()))
                 else:
-                    self._state["err"] = (
-                        "ICA: scan completed but no image data or URL."
-                    )
+                    self._state["err"] = "ICA: no image."
             except Exception as e:
-                self._state["err"] = f"ICA image convert: {e}"
+                self._state["err"] = f"ICA convert: {e}"
             finally:
                 self._ev_done.set()
 
@@ -2229,10 +2169,7 @@ def _scan_macos_usb_pyobjc() -> bytes:
         from Foundation import NSObject, NSRunLoop, NSDate  # noqa: F401
         import ImageCaptureCore as ICC
     except ImportError:
-        raise ImportError(
-            "pyobjc-framework-ImageCaptureCore is not installed.\n"
-            "  pip install pyobjc-framework-ImageCaptureCore"
-        )
+        raise ImportError("pyobjc-framework-ImageCaptureCore not installed.")
     import threading
 
     _ev_found  = threading.Event()
@@ -2262,18 +2199,13 @@ def _scan_macos_usb_pyobjc() -> bytes:
             rl.runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.1))
             elapsed += 0.1
         if not event.is_set():
-            raise RuntimeError(
-                f"ICA: timeout waiting for {label} ({timeout:.0f}s).\n"
-                "  • Check USB cable and that the scanner is powered on.\n"
-                "  • Open macOS 'Image Capture' — if it sees the scanner, "
-                "so will this bridge."
-            )
+            raise RuntimeError(f"ICA: timeout waiting for {label}")
 
     try:
-        _spin(_ev_found,  10.0, "scanner discovery")
+        _spin(_ev_found,  10.0, "discovery")
         if _state["err"]:
             raise RuntimeError(_state["err"])
-        _spin(_ev_opened, 15.0, "session open + unit select")
+        _spin(_ev_opened, 15.0, "unit select")
         if _state["err"]:
             raise RuntimeError(_state["err"])
         _spin(_ev_done,   90.0, "scan completion")
@@ -2285,17 +2217,15 @@ def _scan_macos_usb_pyobjc() -> bytes:
     if _state["err"]:
         raise RuntimeError(_state["err"])
     if not _state["png"]:
-        raise RuntimeError("ICA: scan completed but no image data was received.")
-    log.info("ICA scan OK — %s bytes", f"{len(_state['png']):,}")
+        raise RuntimeError("ICA: no image data.")
     return _state["png"]
 
 
 def scan_macos() -> bytes:
-    """Single-page flatbed scan on macOS."""
     try:
         return _scan_via_scanimage()
     except FileNotFoundError:
-        log.info("scanimage not installed → trying eSCL HTTP…")
+        pass
     except Exception as e:
         log.warning("scanimage failed (%s) → trying eSCL HTTP…", e)
     try:
@@ -2393,8 +2323,57 @@ async def handle(websocket):
                     "message": "Loading document feeder — please wait…",
                 }))
                 loop = asyncio.get_event_loop()
+                progress_q = asyncio.Queue()
+
+                def _progress_cb(pmsg):
+                    # Called from the executor (worker) thread.  Push
+                    # the message onto the main-loop's queue thread-safely.
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            progress_q.put(pmsg), loop
+                        )
+                    except Exception as ex:
+                        log.debug("progress_cb enqueue failed: %s", ex)
+
+                def _do_scan_adf():
+                    return scan_adf(progress_cb=_progress_cb)
+
+                scan_future = loop.run_in_executor(executor, _do_scan_adf)
+
+                # Drain progress messages until the scan future completes.
                 try:
-                    pages_png  = await loop.run_in_executor(executor, scan_adf)
+                    while True:
+                        get_task = asyncio.create_task(progress_q.get())
+                        done, _ = await asyncio.wait(
+                            {scan_future, get_task},
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        if get_task in done:
+                            pmsg = get_task.result()
+                            try:
+                                await websocket.send(json.dumps(pmsg))
+                            except Exception:
+                                pass
+                            if scan_future.done():
+                                break
+                        else:
+                            # scan_future finished first — cancel pending get
+                            get_task.cancel()
+                            try:
+                                await get_task
+                            except (asyncio.CancelledError, Exception):
+                                pass
+                            break
+
+                    # Drain any remaining queued progress messages
+                    while not progress_q.empty():
+                        try:
+                            pmsg = progress_q.get_nowait()
+                            await websocket.send(json.dumps(pmsg))
+                        except asyncio.QueueEmpty:
+                            break
+
+                    pages_png  = scan_future.result()
                     images_b64 = [base64.b64encode(p).decode() for p in pages_png]
                     log.info("→ ADF scan OK  %d page(s)", len(images_b64))
                     await websocket.send(json.dumps({
@@ -2404,9 +2383,12 @@ async def handle(websocket):
                     }))
                 except Exception as e:
                     log.error("ADF scan error: %s", e)
-                    await websocket.send(
-                        json.dumps({"status": "error", "message": str(e)})
-                    )
+                    try:
+                        await websocket.send(
+                            json.dumps({"status": "error", "message": str(e)})
+                        )
+                    except Exception:
+                        pass
 
             elif action == "make_pdf":
                 images_b64 = msg.get("images", [])
@@ -2529,11 +2511,13 @@ def main():
         ):
             bar = "━" * 56
             log.info(bar)
-            log.info("  Cheque Scanner Bridge  v1.7.7")
+            log.info("  Cheque Scanner Bridge  v1.7.11")
             log.info("  ws://localhost:%s", args.port)
             log.info("  Platform : %s", sys.platform)
             log.info("  Show UI  : %s", SHOW_UI)
             log.info("  URL cache: %s", _ESCL_URL_CACHE)
+            log.info("  Log file : %s", _LOG_FILE)
+            log.info("  Frozen   : %s", _is_frozen())
             log.info(bar)
             log.info("  Actions:")
             log.info("    ping                     — health check")
@@ -2541,6 +2525,7 @@ def main():
             log.info("    scan                     — acquire single page (flatbed)")
             log.info("    scan + auto_crop:true    — acquire + auto-crop")
             log.info("    scan_adf                 — acquire ALL pages from feeder")
+            log.info("                                (emits status:'progress' per page)")
             log.info("    detect_bounds            — find document on scanned page")
             log.info("    crop                     — crop image by coordinates")
             log.info("    make_pdf                 — combine images into PDF")
