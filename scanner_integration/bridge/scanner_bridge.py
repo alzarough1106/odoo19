@@ -926,6 +926,7 @@ def _build_pdf_from_jpegs(pages: list) -> bytes:
     )
     return buf.getvalue()
 
+
 def _images_to_pdf(images_b64: list) -> bytes:
     from PIL import Image
 

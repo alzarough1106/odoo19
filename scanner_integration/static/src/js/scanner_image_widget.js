@@ -22,7 +22,7 @@ const CROP_HANDLES = [
     { id: "e",  cursor: "e-resize",  nx: 1,   ny: 0.5 },
     { id: "se", cursor: "se-resize", nx: 1,   ny: 1   },
     { id: "s",  cursor: "s-resize",  nx: 0.5, ny: 1   },
-    { id: "sw", cursor: "sw-resize", nx: 0,   ny: 1   },
+    { id: "sw", cursor: "sw-resize", nx: 0,   ny: 0.5 },
     { id: "w",  cursor: "w-resize",  nx: 0,   ny: 0.5 },
 ];
 
@@ -1284,6 +1284,14 @@ class ScannerPdfField extends Component {
                 ws.onmessage = (ev) => {
                     let msg;
                     try { msg = JSON.parse(ev.data); } catch (_) { return; }
+
+                    if (msg.status === 'progress') {
+                        const el = document.querySelector('.scan-progress');
+                        if (el) el.textContent = `Scanning… page ${msg.page}`;
+                        this.state.statusMsg = `Scanning… page ${msg.page}`;
+                        return;
+                    }
+
                     if (msg.status === "scanning") {
                         this.state.statusMsg = msg.message || "Scanning feeder…";
                         return;
