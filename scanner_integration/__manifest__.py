@@ -36,7 +36,7 @@ Requirements
     'support': 'alzarough@gmail.com',
 
     'license': 'OPL-1',
-    'price': 50.0,
+    'price': 5.0,
     'currency': 'USD',
 
     'images': [
