@@ -1,20 +1,59 @@
 /** @odoo-module **/
 
-import { registry }             from "@web/core/registry";
-import { useService }           from "@web/core/utils/hooks";
-import { standardFieldProps }   from "@web/views/fields/standard_field_props";
-import { Component, useState, useRef, onMounted, onWillUnmount }
-                                 from "@odoo/owl";
+import { registry } from "@web/core/registry";
+import { useService } from "@web/core/utils/hooks";
+import { standardFieldProps } from "@web/views/fields/standard_field_props";
+import { useX2ManyCrud } from "@web/views/fields/relational_utils";
+import { isBinarySize } from "@web/core/utils/binary";
+import { formatDateTime } from "@web/core/l10n/dates";
+import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
+import { browser } from "@web/core/browser/browser";
+import { session } from "@web/session";
+import { _t } from "@web/core/l10n/translation";
+import {
+    Component,
+    useState,
+    useRef,
+    useEffect,
+    useExternalListener,
+    onMounted,
+    onWillUnmount,
+} from "@odoo/owl";
 
-const BRIDGE_URL      = "ws://localhost:8765";
-const CONNECT_TIMEOUT = 5000;
-const SCAN_TIMEOUT    = 30000;
-const ADF_TIMEOUT     = 120000;
-const PDF_TIMEOUT     = 60000;
+// ─── configuration ────────────────────────────────────────────────────────────
 
-const PAGE_MAX_W  = 1654;
+const BRIDGE_URL        = "ws://localhost:8765";
+const CONNECT_TIMEOUT   = 5000;
+const PING_TIMEOUT      = 5000;
+const LIST_TIMEOUT      = 180000;
+const SCAN_TIMEOUT      = 180000;
+const ADF_IDLE_TIMEOUT  = 240000;   // max silence between two bridge messages
+const PDF_TIMEOUT       = 180000;
+const DETECT_TIMEOUT    = 60000;
+const INBOX_WAIT_SECONDS = 180;
+
+const PAGE_MAX_W  = 1654;           // A4 @ 200 dpi
 const PAGE_MAX_H  = 2339;
 const PAGE_JPEG_Q = 0.82;
+
+const MIN_CROP_W = 40;
+const MIN_CROP_H = 25;
+
+const DEFAULT_MAX_UPLOAD = 128 * 1024 * 1024;
+const OPTIONS_KEY = "scanner_integration.adf_options.v1";
+
+const DEFAULT_ADF_OPTIONS = {
+    duplex          : false,
+    skipBlank       : false,
+    blankSensitivity: "normal",
+    doubleFeed      : true,
+    imprintEnabled  : false,
+    imprintMode     : "auto",
+    imprintText     : "{date} {counter}",
+    imprintStart    : 1,
+    imprintDigits   : 5,
+    imprintPosition : "top",
+};
 
 const CROP_HANDLES = [
     { id: "nw", cursor: "nw-resize", nx: 0,   ny: 0   },
@@ -27,940 +66,1624 @@ const CROP_HANDLES = [
     { id: "w",  cursor: "w-resize",  nx: 0,   ny: 0.5 },
 ];
 
+let _scannerListCache = null;
 
-// ─── module-level helpers ─────────────────────────────────────────────────────
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+function clamp(v, lo, hi) {
+    return Math.min(Math.max(v, lo), hi);
+}
+
+function loadAdfOptions() {
+    try {
+        const raw = browser.localStorage.getItem(OPTIONS_KEY);
+        return { ...DEFAULT_ADF_OPTIONS, ...(raw ? JSON.parse(raw) : {}) };
+    } catch {
+        return { ...DEFAULT_ADF_OPTIONS };
+    }
+}
+
+function saveAdfOptions(options) {
+    try {
+        browser.localStorage.setItem(OPTIONS_KEY, JSON.stringify(options));
+    } catch {
+        // storage disabled — ignore
+    }
+}
 
 function _b64Mime(b64) {
     try {
-        const h = atob(b64.slice(0, 16));
-        if (h.charCodeAt(0) === 0x89 && h[1] === "P")             return "image/png";
-        if (h.charCodeAt(0) === 0xFF && h.charCodeAt(1) === 0xD8) return "image/jpeg";
-    } catch (_) {}
+        const h = atob((b64 || "").slice(0, 24));
+        const c = (i) => h.charCodeAt(i);
+        if (c(0) === 0x89 && h.slice(1, 4) === "PNG")              return "image/png";
+        if (c(0) === 0xff && c(1) === 0xd8)                        return "image/jpeg";
+        if (h.slice(0, 4) === "GIF8")                              return "image/gif";
+        if (h.slice(0, 4) === "RIFF" && h.slice(8, 12) === "WEBP") return "image/webp";
+        if (h.slice(0, 2) === "BM")                                return "image/bmp";
+    } catch {
+        // fall through
+    }
     return "image/png";
 }
 
-function compressPageImage(b64, maxW, maxH, quality) {
-    maxW    = maxW    === undefined ? PAGE_MAX_W  : maxW;
-    maxH    = maxH    === undefined ? PAGE_MAX_H  : maxH;
-    quality = quality === undefined ? PAGE_JPEG_Q : quality;
-    return new Promise(function (resolve) {
-        var mime = _b64Mime(b64);
-        var img  = new Image();
-        img.onload = function () {
-            var w = img.width, h = img.height;
-            var s = Math.min(maxW / w, maxH / h, 1);
-            w = Math.max(1, Math.round(w * s));
-            h = Math.max(1, Math.round(h * s));
-            var cv = document.createElement("canvas");
-            cv.width = w; cv.height = h;
-            cv.getContext("2d").drawImage(img, 0, 0, w, h);
-            resolve(cv.toDataURL("image/jpeg", quality).split(",")[1]);
-        };
-        img.onerror = function () { resolve(b64); };
-        img.src = "data:" + mime + ";base64," + b64;
+function _dataUrl(b64) {
+    return `data:${_b64Mime(b64)};base64,${b64}`;
+}
+
+function _loadImage(b64) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(_t("The image could not be decoded by the browser.")));
+        img.src = _dataUrl(b64);
     });
 }
 
-function _rotateImage(b64, degrees) {
-    return new Promise(function (resolve) {
-        var mime = _b64Mime(b64);
-        var img  = new Image();
-        img.onload = function () {
-            var rad  = (degrees * Math.PI) / 180;
-            var sin  = Math.abs(Math.sin(rad));
-            var cos  = Math.abs(Math.cos(rad));
-            var newW = Math.round(img.width * cos + img.height * sin);
-            var newH = Math.round(img.width * sin + img.height * cos);
-            var cv   = document.createElement("canvas");
-            cv.width  = newW;
-            cv.height = newH;
-            var ctx = cv.getContext("2d");
-            ctx.translate(newW / 2, newH / 2);
-            ctx.rotate(rad);
-            ctx.drawImage(img, -img.width / 2, -img.height / 2);
-            resolve(cv.toDataURL("image/png").split(",")[1]);
-        };
-        img.onerror = function () { resolve(b64); };
-        img.src = "data:" + mime + ";base64," + b64;
+function _canvasB64(canvas, mime, quality) {
+    return canvas.toDataURL(mime, quality).split(",")[1];
+}
+
+function _whiteCanvas(w, h) {
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(w));
+    cv.height = Math.max(1, Math.round(h));
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    return { cv, ctx };
+}
+
+async function compressPageImage(b64, maxW = PAGE_MAX_W, maxH = PAGE_MAX_H, quality = PAGE_JPEG_Q) {
+    let img;
+    try {
+        img = await _loadImage(b64);
+    } catch {
+        return b64;
+    }
+    const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    if (s === 1 && _b64Mime(b64) === "image/jpeg") {
+        return b64; // already a right-sized JPEG (bridge output) → no re-encoding
+    }
+    const { cv, ctx } = _whiteCanvas(img.naturalWidth * s, img.naturalHeight * s);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    return _canvasB64(cv, "image/jpeg", quality);
+}
+
+async function makeThumbnail(b64, maxW = 150, maxH = 200) {
+    try {
+        const img = await _loadImage(b64);
+        const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+        const { cv, ctx } = _whiteCanvas(img.naturalWidth * s, img.naturalHeight * s);
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        return _canvasB64(cv, "image/jpeg", 0.75);
+    } catch {
+        return null;
+    }
+}
+
+async function rotateImage(b64, degrees) {
+    const img = await _loadImage(b64);
+    const rad = (degrees * Math.PI) / 180;
+    const sin = Math.abs(Math.sin(rad));
+    const cos = Math.abs(Math.cos(rad));
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(w * cos + h * sin);
+    cv.height = Math.round(w * sin + h * cos);
+    const ctx = cv.getContext("2d");
+    ctx.translate(cv.width / 2, cv.height / 2);
+    ctx.rotate(rad);
+    ctx.drawImage(img, -w / 2, -h / 2);
+    return _canvasB64(cv, "image/png");
+}
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = (e) => resolve(String(e.target.result).split(",")[1] || "");
+        fr.onerror = () => reject(new Error(_t("Could not read file") + ` "${file.name}"`));
+        fr.readAsDataURL(file);
     });
+}
+
+function sanitizeFilename(name) {
+    return (name || "").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_").trim();
+}
+
+/** Human-readable guidance per bridge error code. */
+function issueInfo(code, pagesDone) {
+    const cont = pagesDone ? _t("Continue scanning") : _t("Retry");
+    switch (code) {
+        case "double_feed":
+            return {
+                level: "warning", icon: "fa-clone", title: _t("Double feed detected"),
+                body: _t("Two or more sheets were pulled in together, so the scanner stopped. " +
+                         "Take the last sheet(s) from the output tray, put them back on top of the " +
+                         "remaining stack in the feeder, then continue."),
+                resumable: true, resumeLabel: cont,
+            };
+        case "paper_jam":
+            return {
+                level: "warning", icon: "fa-exclamation-triangle", title: _t("Paper jam / misfeed"),
+                body: _t("Open the feeder cover, carefully remove the stuck sheet, put it back with " +
+                         "the remaining pages and continue."),
+                resumable: true, resumeLabel: cont,
+            };
+        case "cover_open":
+            return {
+                level: "warning", icon: "fa-folder-open-o", title: _t("Scanner cover open"),
+                body: _t("Close the scanner / ADF cover and try again."),
+                resumable: true, resumeLabel: cont,
+            };
+        case "feeder_empty":
+            return {
+                level: "warning", icon: "fa-inbox", title: _t("The document feeder is empty"),
+                body: _t("Load the documents into the feeder and try again."),
+                resumable: true, resumeLabel: _t("Retry"),
+            };
+        case "no_feeder":
+            return {
+                level: "danger", icon: "fa-ban", title: _t("No document feeder"),
+                body: _t("This scanner has no automatic document feeder. Use \"Add Page\" instead."),
+                resumable: false,
+            };
+        case "offline":
+            return {
+                level: "danger", icon: "fa-plug", title: _t("Scanner offline"),
+                body: _t("The scanner is not reachable. Check power, cable / network and the driver."),
+                resumable: true, resumeLabel: _t("Retry"),
+            };
+        case "busy":
+            return {
+                level: "warning", icon: "fa-hourglass-half", title: _t("Scanner busy"),
+                body: _t("The scanner is busy or warming up. Close other scanning applications and retry."),
+                resumable: true, resumeLabel: _t("Retry"),
+            };
+        case "attention":
+            return {
+                level: "warning", icon: "fa-bell", title: _t("Scanner needs attention"),
+                body: _t("Check the scanner display / LEDs, fix the problem and retry."),
+                resumable: true, resumeLabel: cont,
+            };
+        case "inbox_empty":
+            return {
+                level: "warning", icon: "fa-folder-o", title: _t("No documents arrived"),
+                body: _t("Nothing was delivered to the folder inbox in time. Start the job on the " +
+                         "scanner (PaperStream NX Manager / ScanSnap Home) and click Retry."),
+                resumable: true, resumeLabel: _t("Retry"),
+            };
+        case "all_blank":
+            return {
+                level: "warning", icon: "fa-file-o", title: _t("Only blank pages"),
+                body: _t("All pages were detected as blank. Check the document orientation or " +
+                         "lower the blank-page sensitivity."),
+                resumable: true, resumeLabel: _t("Retry"),
+            };
+        case "timeout":
+            return {
+                level: "danger", icon: "fa-clock-o", title: _t("The scanner stopped responding"),
+                body: _t("No answer from the scanner bridge. Check the scanner and the bridge window."),
+                resumable: true, resumeLabel: cont,
+            };
+        default:
+            return null;
+    }
+}
+
+
+// ─── WebSocket bridge client ──────────────────────────────────────────────────
+
+class BridgeClient {
+    constructor(onStatus) {
+        this.ws = null;
+        this._connecting = null;
+        this._pending = new Map();
+        this._seq = 0;
+        this._onStatus = onStatus;
+        this._disposed = false;
+    }
+
+    get connected() {
+        return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+    }
+
+    _status(s) {
+        if (!this._disposed) {
+            this._onStatus(s);
+        }
+    }
+
+    connect() {
+        if (this._disposed) {
+            return Promise.reject(new Error(_t("Scanner widget closed.")));
+        }
+        if (this.connected) {
+            return Promise.resolve(this.ws);
+        }
+        if (this._connecting) {
+            return this._connecting;
+        }
+        this._connecting = new Promise((resolve, reject) => {
+            const unreachable = _t("Cannot reach the scanner bridge at") + ` ${BRIDGE_URL}.`;
+            let ws = null;
+            let settled = false;
+            let timer = null;
+            const fail = (message) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timer);
+                this._connecting = null;
+                if (ws) {
+                    ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null;
+                    try { ws.close(); } catch { /* ignore */ }
+                }
+                this._status("disconnected");
+                reject(new Error(message));
+            };
+            try {
+                ws = new WebSocket(BRIDGE_URL);
+            } catch {
+                fail(unreachable);
+                return;
+            }
+            timer = setTimeout(() => fail(unreachable + " " + _t("(connection timeout)")), CONNECT_TIMEOUT);
+            ws.onopen = () => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timer);
+                this._connecting = null;
+                if (this._disposed) {
+                    try { ws.close(); } catch { /* ignore */ }
+                    reject(new Error(_t("Scanner widget closed.")));
+                    return;
+                }
+                this.ws = ws;
+                ws.onmessage = (ev) => this._onMessage(ev);
+                ws.onclose = () => this._onClose(ws);
+                ws.onerror = () => {};
+                this._status("connected");
+                resolve(ws);
+            };
+            ws.onerror = () => fail(unreachable);
+            ws.onclose = () => fail(unreachable);
+        });
+        return this._connecting;
+    }
+
+    _onMessage(ev) {
+        let msg;
+        try {
+            msg = JSON.parse(ev.data);
+        } catch {
+            return;
+        }
+        const entry = msg.id !== undefined && msg.id !== null
+            ? this._pending.get(msg.id)
+            : this._pending.values().next().value; // legacy bridge (no id echo)
+        if (!entry) {
+            return;
+        }
+        this._arm(entry); // activity → reset idle timeout
+        switch (msg.status) {
+            case "scanning":
+            case "progress":
+                entry.onProgress?.(msg);
+                return;
+            case "page":
+                entry.onPage?.(msg);
+                return;
+            case "document":
+                entry.onDocument?.(msg);
+                return;
+            case "ok":
+                this._settle(entry, null, msg);
+                return;
+            default: {
+                const err = new Error(msg.message || _t("Scanner bridge request failed."));
+                err.code = msg.code || null;
+                err.data = msg;
+                this._settle(entry, err);
+            }
+        }
+    }
+
+    _arm(entry) {
+        clearTimeout(entry.timer);
+        entry.timer = setTimeout(() => {
+            const err = new Error(
+                _t("The scanner bridge did not answer in time") + ` (${Math.round(entry.timeout / 1000)} s).`
+            );
+            err.code = "timeout";
+            this._settle(entry, err);
+            if (entry.cancelOnTimeout) {
+                this.cancel(entry.id);
+            }
+        }, entry.timeout);
+    }
+
+    _settle(entry, error, msg) {
+        if (!this._pending.has(entry.id)) {
+            return;
+        }
+        this._pending.delete(entry.id);
+        clearTimeout(entry.timer);
+        if (error) {
+            entry.reject(error);
+        } else {
+            entry.resolve(msg);
+        }
+    }
+
+    _onClose(ws) {
+        if (this.ws === ws) {
+            this.ws = null;
+        }
+        this._status("disconnected");
+        for (const entry of [...this._pending.values()]) {
+            this._settle(entry, new Error(_t("The scanner bridge closed the connection.")));
+        }
+    }
+
+    async request(action, payload = {}, options = {}) {
+        const {
+            timeout = SCAN_TIMEOUT, onProgress = null, onPage = null,
+            onDocument = null, onStart = null, cancelOnTimeout = false,
+        } = options;
+        const ws = await this.connect();
+        const id = ++this._seq;
+        return new Promise((resolve, reject) => {
+            const entry = {
+                id, resolve, reject, onProgress, onPage, onDocument,
+                timeout, cancelOnTimeout, timer: null,
+            };
+            this._pending.set(id, entry);
+            this._arm(entry);
+            try {
+                ws.send(JSON.stringify({ ...payload, action, id }));
+                onStart?.(id);
+            } catch (e) {
+                this._settle(entry, e instanceof Error ? e : new Error(String(e)));
+            }
+        });
+    }
+
+    cancel(jobId) {
+        if (!jobId || !this.connected) {
+            return Promise.resolve();
+        }
+        return this.request("cancel", { job: jobId }, { timeout: 10000 }).catch(() => {});
+    }
+
+    async ping() {
+        try {
+            await this.request("ping", {}, { timeout: PING_TIMEOUT });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    dispose() {
+        this._disposed = true;
+        const ws = this.ws;
+        this.ws = null;
+        if (ws) {
+            ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null;
+            try { ws.close(); } catch { /* ignore */ }
+        }
+        for (const entry of [...this._pending.values()]) {
+            this._settle(entry, new Error(_t("Scanner widget closed.")));
+        }
+    }
+}
+
+
+// ─── shared base (bridge + crop editor + messages) ───────────────────────────
+
+class ScannerFieldBase extends Component {
+    static props = { ...standardFieldProps };
+
+    setup() {
+        this.state = useState({
+            bridgeStatus: "unknown",
+            statusMsg   : "",
+            errorMsg    : "",
+            scanIssue   : null,
+            scanning    : false,
+            showCropper : false,
+            rawImage    : null,
+            cropPageIdx : -1,
+            cropReady   : false,
+            cropBusy    : false,
+            cropInfo    : "",
+            cropX       : 0,
+            cropY       : 0,
+            cropW       : 0,
+            cropH       : 0,
+        });
+
+        this.cropHandles  = CROP_HANDLES;
+        this.cropImageRef = useRef("cropImage");
+        this.fileInputRef = useRef("fileInput");
+
+        this._timers           = new Set();
+        this._dragCleanup      = null;
+        this._destroyed        = false;
+        this._cropDisplayW     = 0;
+        this._autoDetectOnLoad = false;
+
+        this.bridge = new BridgeClient((status) => {
+            if (!this._destroyed) {
+                this.state.bridgeStatus = status;
+            }
+        });
+
+        this.onCropHandlePointerDown = this.onCropHandlePointerDown.bind(this);
+        this.onCropBoxPointerDown    = this.onCropBoxPointerDown.bind(this);
+
+        useExternalListener(window, "resize", this._onWindowResize);
+
+        onMounted(() => this.bridge.ping());
+        onWillUnmount(() => {
+            this._destroyed = true;
+            if (this._dragCleanup) {
+                this._dragCleanup();
+            }
+            for (const t of this._timers) {
+                clearTimeout(t);
+            }
+            this._timers.clear();
+            this.bridge.dispose();
+        });
+    }
+
+    // ── generic ───────────────────────────────────────────────────────────────
+
+    get isReadonly() {
+        return !!this.props.readonly;
+    }
+
+    get isBusy() {
+        return this.state.scanning || this.state.cropBusy;
+    }
+
+    get showStatusAlert() {
+        return !!this.state.statusMsg && !this.isBusy;
+    }
+
+    _setError(e) {
+        this.state.errorMsg = (e && e.message) || String(e || _t("Unknown error"));
+        this.state.statusMsg = "";
+    }
+
+    _flash(msg, ms = 3000) {
+        this.state.statusMsg = msg;
+        const t = setTimeout(() => {
+            this._timers.delete(t);
+            if (this.state.statusMsg === msg) {
+                this.state.statusMsg = "";
+            }
+        }, ms);
+        this._timers.add(t);
+    }
+
+    _handleScanError(e, context, pagesDone = 0) {
+        const code = e && e.code;
+        if (code === "cancelled") {
+            this.state.errorMsg = "";
+            this._flash(
+                _t("Scan stopped.") + (pagesDone ? ` ${pagesDone} ` + _t("page(s) kept.") : ""),
+                4000
+            );
+            return;
+        }
+        const info = code ? issueInfo(code, pagesDone) : null;
+        if (info) {
+            this.state.scanIssue = { ...info, code, context, pagesDone, detail: e.message || "" };
+            this.state.errorMsg = "";
+            this.state.statusMsg = "";
+            return;
+        }
+        this._setError(e);
+    }
+
+    onDismissError() {
+        this.state.errorMsg = "";
+    }
+
+    onDismissIssue() {
+        this.state.scanIssue = null;
+    }
+
+    /** Overridden by subclasses. */
+    onResumeScan() {
+        this.state.scanIssue = null;
+    }
+
+    onRetryBridge() {
+        this.state.bridgeStatus = "unknown";
+        this.bridge.ping();
+    }
+
+    // ── crop editor ───────────────────────────────────────────────────────────
+
+    get rawImageSrc() {
+        return this.state.rawImage ? _dataUrl(this.state.rawImage) : "";
+    }
+
+    get cropStyles() {
+        const { cropX: x, cropY: y, cropW: w, cropH: h } = this.state;
+        return {
+            overlayTop   : `top:0;left:0;right:0;height:${y}px;`,
+            overlayBottom: `left:0;right:0;top:${y + h}px;bottom:0;`,
+            overlayLeft  : `top:${y}px;left:0;width:${x}px;height:${h}px;`,
+            overlayRight : `top:${y}px;left:${x + w}px;right:0;height:${h}px;`,
+            cropBox      : `top:${y}px;left:${x}px;width:${w}px;height:${h}px;`,
+        };
+    }
+
+    getHandleStyle(handle) {
+        return `left:${handle.nx * 100}%;top:${handle.ny * 100}%;cursor:${handle.cursor};`;
+    }
+
+    get cropDimensionsLabel() {
+        const img = this.cropImageRef.el;
+        if (!img || !img.naturalWidth) {
+            return "";
+        }
+        const rect = img.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+            return "";
+        }
+        const sx = img.naturalWidth / rect.width;
+        const sy = img.naturalHeight / rect.height;
+        return `${Math.round(this.state.cropW * sx)} \u00D7 ${Math.round(this.state.cropH * sy)} px`;
+    }
+
+    _openCropEditor(b64, pageIdx = -1, { autoDetect = false } = {}) {
+        this._autoDetectOnLoad = autoDetect;
+        Object.assign(this.state, {
+            rawImage   : b64,
+            cropPageIdx: pageIdx,
+            showCropper: true,
+            cropReady  : false,
+            cropBusy   : false,
+            cropInfo   : "",
+            errorMsg   : "",
+        });
+    }
+
+    _closeCropEditor() {
+        if (this._dragCleanup) {
+            this._dragCleanup();
+        }
+        this._autoDetectOnLoad = false;
+        Object.assign(this.state, {
+            showCropper: false,
+            rawImage   : null,
+            cropPageIdx: -1,
+            cropReady  : false,
+            cropBusy   : false,
+            cropInfo   : "",
+        });
+    }
+
+    onCropImageLoad(ev) {
+        const img = ev.target;
+        const rect = img.getBoundingClientRect();
+        const w = rect.width || img.clientWidth;
+        const h = rect.height || img.clientHeight;
+        const m = Math.min(16, w * 0.03, h * 0.03);
+        this._cropDisplayW = w;
+        Object.assign(this.state, {
+            cropX: m,
+            cropY: m,
+            cropW: Math.max(1, w - 2 * m),
+            cropH: Math.max(1, h - 2 * m),
+            cropReady: true,
+        });
+        if (this._autoDetectOnLoad) {
+            this._autoDetectOnLoad = false;
+            if (this.bridge.connected) {
+                this.onAutoDetect();
+            }
+        }
+    }
+
+    onCropImageError() {
+        this._closeCropEditor();
+        this._setError(new Error(_t("This image format cannot be displayed by the browser. Please use PNG or JPEG.")));
+    }
+
+    async onAutoDetect() {
+        if (!this.state.rawImage || this.state.cropBusy || !this.state.cropReady) {
+            return;
+        }
+        this.state.cropBusy = true;
+        try {
+            const res = await this.bridge.request(
+                "detect_bounds",
+                { image: this.state.rawImage, background: "auto" },
+                { timeout: DETECT_TIMEOUT }
+            );
+            this._applyBounds(res);
+        } catch (e) {
+            this._setError(e);
+        } finally {
+            if (!this._destroyed) {
+                this.state.cropBusy = false;
+            }
+        }
+    }
+
+    _applyBounds(res) {
+        const el = this.cropImageRef.el;
+        const b = res && res.bounds;
+        if (!el || !b || !el.naturalWidth) {
+            return;
+        }
+        if (res.found === false) {
+            this.state.cropInfo = _t("No document edges found — adjust manually");
+            return;
+        }
+        const rect = el.getBoundingClientRect();
+        const fx = rect.width / el.naturalWidth;
+        const fy = rect.height / el.naturalHeight;
+        const x = clamp(b.x * fx, 0, Math.max(0, rect.width - MIN_CROP_W));
+        const y = clamp(b.y * fy, 0, Math.max(0, rect.height - MIN_CROP_H));
+        Object.assign(this.state, {
+            cropX: x,
+            cropY: y,
+            cropW: clamp(b.width * fx, MIN_CROP_W, rect.width - x),
+            cropH: clamp(b.height * fy, MIN_CROP_H, rect.height - y),
+            cropInfo: res.background === "dark"
+                ? _t("Document detected (dark background)")
+                : _t("Document detected"),
+        });
+    }
+
+    _onWindowResize() {
+        if (!this.state.showCropper || !this.state.cropReady || !this._cropDisplayW) {
+            return;
+        }
+        const el = this.cropImageRef.el;
+        const w = el && el.getBoundingClientRect().width;
+        if (!w) {
+            return;
+        }
+        const f = w / this._cropDisplayW;
+        if (Math.abs(f - 1) < 0.001) {
+            return;
+        }
+        this._cropDisplayW = w;
+        Object.assign(this.state, {
+            cropX: this.state.cropX * f,
+            cropY: this.state.cropY * f,
+            cropW: this.state.cropW * f,
+            cropH: this.state.cropH * f,
+        });
+    }
+
+    _startDrag(ev, onMove) {
+        if (ev.button !== undefined && ev.button !== 0) {
+            return;
+        }
+        const img = this.cropImageRef.el;
+        if (!img || this.state.cropBusy) {
+            return;
+        }
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (this._dragCleanup) {
+            this._dragCleanup();
+        }
+        const rect = img.getBoundingClientRect();
+        const start = {
+            px: ev.clientX, py: ev.clientY,
+            x: this.state.cropX, y: this.state.cropY,
+            w: this.state.cropW, h: this.state.cropH,
+            maxW: rect.width, maxH: rect.height,
+        };
+        const move = (e) => {
+            e.preventDefault();
+            onMove(e.clientX - start.px, e.clientY - start.py, start);
+        };
+        const cleanup = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", cleanup);
+            window.removeEventListener("pointercancel", cleanup);
+            this._dragCleanup = null;
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", cleanup);
+        window.addEventListener("pointercancel", cleanup);
+        this._dragCleanup = cleanup;
+    }
+
+    onCropBoxPointerDown(ev) {
+        this._startDrag(ev, (dx, dy, s) => {
+            this.state.cropX = clamp(s.x + dx, 0, Math.max(0, s.maxW - s.w));
+            this.state.cropY = clamp(s.y + dy, 0, Math.max(0, s.maxH - s.h));
+        });
+    }
+
+    onCropHandlePointerDown(ev, handleId) {
+        this._startDrag(ev, (dx, dy, s) => {
+            let l = s.x;
+            let t = s.y;
+            let r = s.x + s.w;
+            let b = s.y + s.h;
+            if (handleId.includes("w")) { l = clamp(l + dx, 0, r - MIN_CROP_W); }
+            if (handleId.includes("e")) { r = clamp(r + dx, l + MIN_CROP_W, s.maxW); }
+            if (handleId.includes("n")) { t = clamp(t + dy, 0, b - MIN_CROP_H); }
+            if (handleId.includes("s")) { b = clamp(b + dy, t + MIN_CROP_H, s.maxH); }
+            Object.assign(this.state, {
+                cropX: l, cropY: t,
+                cropW: Math.max(1, r - l), cropH: Math.max(1, b - t),
+            });
+        });
+    }
+
+    async _getCroppedImage() {
+        const el = this.cropImageRef.el;
+        const b64 = this.state.rawImage;
+        if (!el || !b64) {
+            return null;
+        }
+        const img = await _loadImage(b64);
+        const rect = el.getBoundingClientRect();
+        const sx = img.naturalWidth / (rect.width || 1);
+        const sy = img.naturalHeight / (rect.height || 1);
+        const x = clamp(Math.round(this.state.cropX * sx), 0, img.naturalWidth - 1);
+        const y = clamp(Math.round(this.state.cropY * sy), 0, img.naturalHeight - 1);
+        const w = clamp(Math.round(this.state.cropW * sx), 1, img.naturalWidth - x);
+        const h = clamp(Math.round(this.state.cropH * sy), 1, img.naturalHeight - y);
+        const cv = document.createElement("canvas");
+        cv.width = w;
+        cv.height = h;
+        cv.getContext("2d").drawImage(img, x, y, w, h, 0, 0, w, h);
+        return _canvasB64(cv, "image/png");
+    }
+
+    async _rotate(deg) {
+        if (!this.state.rawImage || this.state.cropBusy) {
+            return;
+        }
+        this.state.cropBusy = true;
+        try {
+            const rotated = await rotateImage(this.state.rawImage, deg);
+            this.state.cropReady = false;
+            this.state.cropInfo = "";
+            this.state.rawImage = rotated;
+        } catch (e) {
+            this._setError(e);
+        } finally {
+            this.state.cropBusy = false;
+        }
+    }
+
+    onRotateLeft()  { return this._rotate(-90); }
+    onRotateRight() { return this._rotate(90); }
+
+    async onApplyCrop() {
+        if (this.state.cropBusy) {
+            return;
+        }
+        this.state.cropBusy = true;
+        try {
+            const b64 = await this._getCroppedImage();
+            if (b64) {
+                await this._commitCrop(b64);
+            }
+        } catch (e) {
+            this._setError(e);
+        } finally {
+            if (!this._destroyed) {
+                this.state.cropBusy = false;
+            }
+        }
+    }
+
+    async onUseFullImage() {
+        if (this.state.cropBusy || !this.state.rawImage) {
+            return;
+        }
+        this.state.cropBusy = true;
+        try {
+            await this._commitCrop(this.state.rawImage);
+        } catch (e) {
+            this._setError(e);
+        } finally {
+            if (!this._destroyed) {
+                this.state.cropBusy = false;
+            }
+        }
+    }
+
+    onCancelCrop() {
+        this._closeCropEditor();
+    }
+
+    /** @abstract */
+    async _commitCrop(_b64) {}
 }
 
 
 // ─── 1. CHEQUE IMAGE WIDGET ───────────────────────────────────────────────────
 
-class ScannerImageField extends Component {
+class ScannerImageField extends ScannerFieldBase {
+    static template = "scanner_integration.ScannerImageField";
 
-    setup() {
-        this.state = useState({
-            scanning    : false,
-            bridgeStatus: "unknown",
-            statusMsg   : "",
-            errorMsg    : "",
-            showCropper : false,
-            rawImage    : null,
-            cropX       : 0,
-            cropY       : 0,
-            cropW       : 100,
-            cropH       : 100,
-        });
-
-        this.cropHandles  = CROP_HANDLES;
-        this.fileInputRef = useRef("fileInput");
-        this.cropImageRef = useRef("cropImage");
-        this._ws          = null;
-
-        this.onCropHandleMouseDown = this.onCropHandleMouseDown.bind(this);
-
-        onMounted(()     => this._pingBridge());
-        onWillUnmount(() => this._closeSocket());
+    get hasValue() {
+        return !!this.props.record.data[this.props.name];
     }
-
-    get fieldValue() { return this.props.record.data[this.props.name]; }
 
     get imageSrc() {
         const value = this.props.record.data[this.props.name];
-        if (!value) return null;
-        const id    = this.props.record.resId;
-        const model = this.props.record.resModel;
-        const field = this.props.name;
-        if (id) return `/web/image/${model}/${id}/${field}`;
-        if (typeof value === "string")
-            return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
+        if (!value) {
+            return null;
+        }
+        if (isBinarySize(value)) {
+            const { resModel, resId } = this.props.record;
+            if (!resId) {
+                return null;
+            }
+            const wd = this.props.record.data.write_date;
+            const unique = wd && wd.ts ? wd.ts : "";
+            return `/web/image/${resModel}/${resId}/${this.props.name}?unique=${unique}`;
+        }
+        if (typeof value === "string") {
+            return value.startsWith("data:") ? value : _dataUrl(value);
+        }
         return null;
     }
 
-    get isReadonly() { return this.props.readonly || false; }
-
-    get cropStyles() {
-        const { cropX: x, cropY: y, cropW: w, cropH: h } = this.state;
-        const dark = "background:rgba(0,0,0,0.55);pointer-events:none;";
-        return {
-            overlayTop   : `position:absolute;top:0;left:0;right:0;height:${y}px;${dark}`,
-            overlayBottom: `position:absolute;left:0;right:0;top:${y + h}px;bottom:0;${dark}`,
-            overlayLeft  : `position:absolute;top:${y}px;left:0;width:${x}px;height:${h}px;${dark}`,
-            overlayRight : `position:absolute;top:${y}px;left:${x + w}px;right:0;height:${h}px;${dark}`,
-            cropBox      :
-                `position:absolute;top:${y}px;left:${x}px;` +
-                `width:${w}px;height:${h}px;` +
-                `border:2px solid #0d6efd;cursor:move;box-sizing:border-box;`,
-        };
+    async _commitCrop(b64) {
+        await this.props.record.update({ [this.props.name]: b64 });
+        this._closeCropEditor();
+        this._flash(_t("\u2713 Image updated"));
     }
 
-    getHandleStyle(handle) {
-        return (
-            `position:absolute;` +
-            `left:calc(${handle.nx * 100}% - 8px);top:calc(${handle.ny * 100}% - 8px);` +
-            `width:16px;height:16px;` +
-            `background:white;border:2px solid #0d6efd;border-radius:3px;` +
-            `cursor:${handle.cursor};z-index:10;box-sizing:border-box;`
-        );
-    }
-
-    get cropDimensionsLabel() {
-        const img = this.cropImageRef && this.cropImageRef.el;
-        if (!img || !img.naturalWidth) return "";
-        const rect = img.getBoundingClientRect();
-        if (!rect.width) return "";
-        const sx = img.naturalWidth  / rect.width;
-        const sy = img.naturalHeight / rect.height;
-        return `${Math.round(this.state.cropW * sx)} \xD7 ${Math.round(this.state.cropH * sy)} px`;
-    }
-
-    _showCropper(imageB64) {
-        this.state.rawImage    = imageB64;
-        this.state.showCropper = true;
-        this.state.cropX = 0; this.state.cropY = 0;
-        this.state.cropW = 100; this.state.cropH = 100;
-    }
-
-    onCropImageLoad(ev) {
-        const img  = ev.target;
-        const rect = img.getBoundingClientRect();
-        const w    = rect.width  || img.clientWidth;
-        const h    = rect.height || img.clientHeight;
-        const m    = Math.min(16, w * 0.03);
-        this.state.cropX = m; this.state.cropY = m;
-        this.state.cropW = w - m * 2; this.state.cropH = h - m * 2;
-    }
-
-    async onRotateLeft() {
-        if (!this.state.rawImage) return;
-        this.state.rawImage = await _rotateImage(this.state.rawImage, -90);
-    }
-
-    async onRotateRight() {
-        if (!this.state.rawImage) return;
-        this.state.rawImage = await _rotateImage(this.state.rawImage, 90);
-    }
-
-    onCropBoxMouseDown(ev) {
-        ev.preventDefault();
-        const startX = ev.clientX, startY = ev.clientY;
-        const sx = this.state.cropX, sy = this.state.cropY;
-        const cw = this.state.cropW, ch = this.state.cropH;
-        const rect = this.cropImageRef.el.getBoundingClientRect();
-        const maxW = rect.width, maxH = rect.height;
-
-        const onMove = (e) => {
-            this.state.cropX = Math.max(0, Math.min(sx + e.clientX - startX, maxW - cw));
-            this.state.cropY = Math.max(0, Math.min(sy + e.clientY - startY, maxH - ch));
-        };
-        const onUp = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup",   onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup",   onUp);
-    }
-
-    onCropHandleMouseDown(ev, handleId) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const startX = ev.clientX, startY = ev.clientY;
-        const sx = this.state.cropX, sy = this.state.cropY;
-        const sw = this.state.cropW, sh = this.state.cropH;
-        const rect = this.cropImageRef.el.getBoundingClientRect();
-        const maxW = rect.width, maxH = rect.height;
-
-        const onMove = (e) => {
-            const dx = e.clientX - startX, dy = e.clientY - startY;
-            let x = sx, y = sy, w = sw, h = sh;
-            if (handleId.includes("n")) { y = sy + dy; h = sh - dy; }
-            if (handleId.includes("s")) { h = sh + dy; }
-            if (handleId.includes("w")) { x = sx + dx; w = sw - dx; }
-            if (handleId.includes("e")) { w = sw + dx; }
-            w = Math.max(40, w); h = Math.max(25, h);
-            x = Math.max(0, Math.min(x, maxW - w));
-            y = Math.max(0, Math.min(y, maxH - h));
-            w = Math.min(w, maxW - x); h = Math.min(h, maxH - y);
-            this.state.cropX = x; this.state.cropY = y;
-            this.state.cropW = w; this.state.cropH = h;
-        };
-        const onUp = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup",   onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup",   onUp);
-    }
-
-    async onApplyCrop() {
-        const b64 = this.state.rawImage;
-        const el  = this.cropImageRef.el;
-        if (!b64 || !el) return;
-
-        const mime    = _b64Mime(b64);
-        const natural = new Image();
-        await new Promise(res => {
-            natural.onload = res;
-            natural.src = `data:${mime};base64,` + b64;
-        });
-
-        const rect   = el.getBoundingClientRect();
-        const scaleX = natural.naturalWidth  / (rect.width  || 1);
-        const scaleY = natural.naturalHeight / (rect.height || 1);
-
-        const canvas = document.createElement("canvas");
-        canvas.width  = Math.round(this.state.cropW * scaleX);
-        canvas.height = Math.round(this.state.cropH * scaleY);
-        canvas.getContext("2d").drawImage(
-            natural,
-            this.state.cropX * scaleX, this.state.cropY * scaleY,
-            this.state.cropW * scaleX, this.state.cropH * scaleY,
-            0, 0, canvas.width, canvas.height
-        );
-        const croppedB64 = canvas.toDataURL("image/png").split(",")[1];
-        await this.props.record.update({ [this.props.name]: croppedB64 });
-        this._closeCropper("\u2713 Image cropped and saved");
-    }
-
-    async onUseFullImage() {
-        await this.props.record.update({ [this.props.name]: this.state.rawImage });
-        this._closeCropper("\u2713 Image saved");
-    }
-
-    onCancelCrop() { this._closeCropper(""); }
-
-    _closeCropper(msg) {
-        this.state.showCropper = false;
-        this.state.rawImage    = null;
-        this.state.statusMsg   = msg;
-        if (msg) setTimeout(() => { this.state.statusMsg = ""; }, 3000);
-    }
-
-    _restoreOnClose(ws) {
-        ws.onclose = () => {
-            this.state.bridgeStatus = "disconnected";
-            this._ws = null;
-        };
-    }
-
-    _closeSocket() {
-        if (this._ws) {
-            this._ws.onclose   = null;
-            this._ws.onerror   = null;
-            this._ws.onmessage = null;
-            try { this._ws.close(); } catch (_) {}
-            this._ws = null;
-        }
-    }
-
-    async _getSocket() {
-        if (this._ws && this._ws.readyState === WebSocket.OPEN)
-            return this._ws;
-
-        if (this._ws) {
-            this._ws.onclose   = null;
-            this._ws.onerror   = null;
-            this._ws.onmessage = null;
-            try { this._ws.close(); } catch (_) {}
-            this._ws = null;
-        }
-
-        return new Promise((resolve, reject) => {
-            let settled = false;
-            const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-
-            const ws    = new WebSocket(BRIDGE_URL);
-            const timer = setTimeout(() => {
-                try { ws.close(); } catch (_) {}
-                settle(reject, new Error(
-                    `Cannot reach scanner bridge at ${BRIDGE_URL}.\n` +
-                    `Run:  python scanner_bridge.py`
-                ));
-            }, CONNECT_TIMEOUT);
-
-            ws.onopen = () => {
-                clearTimeout(timer);
-                this._ws = ws;
-                this.state.bridgeStatus = "connected";
-                this._restoreOnClose(ws);
-                settle(resolve, ws);
-            };
-            ws.onerror = () => {
-                clearTimeout(timer);
-                this.state.bridgeStatus = "disconnected";
-                settle(reject, new Error(
-                    `Scanner bridge not reachable at ${BRIDGE_URL}.\n` +
-                    `Start it with:  python scanner_bridge.py`
-                ));
-            };
-        });
-    }
-
-    async _pingBridge() {
-        try {
-            const ws = await this._getSocket();
-            await new Promise((resolve) => {
-                const tid  = setTimeout(resolve, 2000);
-                const prev = ws.onmessage;
-                ws.onmessage = (ev) => {
-                    clearTimeout(tid);
-                    ws.onmessage = prev;
-                    try {
-                        const d = JSON.parse(ev.data);
-                        if (d.status === "ok") this.state.bridgeStatus = "connected";
-                    } catch (_) {}
-                    resolve();
-                };
-                ws.send(JSON.stringify({ action: "ping" }));
-            });
-        } catch (_) { this.state.bridgeStatus = "disconnected"; }
+    onResumeScan() {
+        this.state.scanIssue = null;
+        this.onScanClick();
     }
 
     async onScanClick() {
-        if (this.state.scanning) return;
-        this.state.scanning  = true;
-        this.state.errorMsg  = "";
-        this.state.statusMsg = "Connecting to scanner bridge\u2026";
-
+        if (this.isBusy) {
+            return;
+        }
+        Object.assign(this.state, {
+            scanning : true,
+            errorMsg : "",
+            scanIssue: null,
+            statusMsg: _t("Connecting to scanner bridge\u2026"),
+        });
         try {
-            const ws = await this._getSocket();
-            this.state.statusMsg = "Waiting for scanner\u2026";
-
-            const imageB64 = await new Promise((resolve, reject) => {
-                const timer = setTimeout(
-                    () => reject(new Error("Scan timed out (30 s).")),
-                    SCAN_TIMEOUT
-                );
-
-                const cleanup = (restoreClose) => {
-                    restoreClose = restoreClose === undefined ? true : restoreClose;
-                    clearTimeout(timer);
-                    ws.onmessage = null;
-                    ws.onerror   = null;
-                    if (restoreClose) this._restoreOnClose(ws);
-                };
-
-                ws.onclose = () => {
-                    cleanup(false);
-                    this._ws = null;
-                    this.state.bridgeStatus = "disconnected";
-                    reject(new Error("Bridge closed the connection during scan."));
-                };
-                ws.onmessage = (ev) => {
-                    let msg;
-                    try { msg = JSON.parse(ev.data); } catch (_) { return; }
-                    if (msg.status === "scanning") {
-                        this.state.statusMsg = msg.message || "Scanning\u2026";
-                        return;
-                    }
-                    cleanup();
-                    if (msg.status === "ok" && msg.image) resolve(msg.image);
-                    else reject(new Error(msg.message || "Scan failed."));
-                };
-                ws.onerror = () => {
-                    cleanup();
-                    reject(new Error("WebSocket error during scan."));
-                };
-                ws.send(JSON.stringify({ action: "scan" }));
+            await this.bridge.connect();
+            this.state.statusMsg = _t("Waiting for scanner\u2026");
+            const res = await this.bridge.request("scan", {}, {
+                timeout: SCAN_TIMEOUT,
+                onProgress: (m) => {
+                    this.state.statusMsg = m.message || _t("Scanning\u2026");
+                },
             });
-
-            this._showCropper(imageB64);
-            this.state.statusMsg = "Adjust the crop area then click Apply & Save";
-        } catch (e) {
-            this.state.errorMsg  = e.message;
+            if (!res.image) {
+                throw new Error(_t("The scanner bridge returned no image."));
+            }
             this.state.statusMsg = "";
+            this._openCropEditor(res.image, -1, { autoDetect: true });
+        } catch (e) {
+            this._handleScanError(e, "cheque");
         } finally {
             this.state.scanning = false;
         }
     }
 
     onUploadClick() {
-        if (this.fileInputRef.el) this.fileInputRef.el.click();
+        if (this.fileInputRef.el) {
+            this.fileInputRef.el.click();
+        }
     }
 
     async onFileChange(ev) {
-        const file = ev.target.files && ev.target.files[0];
-        if (!file) return;
+        const input = ev.target;
+        const file = input.files && input.files[0];
+        input.value = "";
+        if (!file) {
+            return;
+        }
         this.state.errorMsg = "";
-        const b64 = await new Promise((resolve, reject) => {
-            const fr   = new FileReader();
-            fr.onload  = (e) => resolve(e.target.result.split(",")[1]);
-            fr.onerror = reject;
-            fr.readAsDataURL(file);
-        });
-        this._showCropper(b64);
-        ev.target.value = "";
+        if (file.type && !file.type.startsWith("image/")) {
+            this._setError(new Error(_t("Please select an image file.")));
+            return;
+        }
+        try {
+            this._openCropEditor(await readFileAsBase64(file));
+        } catch (e) {
+            this._setError(e);
+        }
     }
 
     async onClearClick() {
         await this.props.record.update({ [this.props.name]: false });
         this.state.statusMsg = "";
-        this.state.errorMsg  = "";
+        this.state.errorMsg = "";
     }
 }
 
-
-
-ScannerImageField.template = "scanner_integration.ScannerImageField";
-ScannerImageField.props = { ...standardFieldProps };
-
-const scannerImageField = {
+export const scannerImageField = {
     component: ScannerImageField,
+    displayName: _t("Scanner Image"),
     supportedTypes: ["binary"],
+    fieldDependencies: [{ name: "write_date", type: "datetime" }],
     isEmpty: () => false,
 };
 
+
 // ─── 2. PDF DOCUMENT SCANNER WIDGET ──────────────────────────────────────────
 
-class ScannerPdfField extends Component {
+class ScannerPdfField extends ScannerFieldBase {
+    static template = "scanner_integration.ScannerPdfField";
 
     setup() {
-        this.orm           = useService("orm");
-        this.cropHandles   = CROP_HANDLES;
-        this.fileInputRef  = useRef("fileInput");
-        this.fileDirectRef = useRef("fileDirect");
-        this.cropImageRef  = useRef("cropImage");
-        this._ws           = null;
-        this._pageIdSeq    = 0;
+        super.setup();
+        this.orm    = useService("orm");
+        this.dialog = useService("dialog");
 
-        this.state = useState({
-            pages              : [],
-            scanning           : false,
-            scanSource         : "",
-            saving             : false,
-            uploading          : false,
-            bridgeStatus       : "unknown",
-            statusMsg          : "",
-            errorMsg           : "",
-            showCropper        : false,
-            cropPageIdx        : -1,
-            rawImage           : null,
-            cropX              : 0,
-            cropY              : 0,
-            cropW              : 100,
-            cropH              : 100,
-            showPreview        : false,
-            previewAttachId    : null,
-            previewFilename    : "",
-            attachments        : [],
-            showFilenameDialog : false,
-            pendingFilename    : "",
-            showScannerDialog  : false,
-            loadingScanners    : false,
-            availableScanners  : [],
-            pendingScanAction  : null,
+        this.fileDirectRef    = useRef("fileDirect");
+        this.filenameInputRef = useRef("filenameInput");
+
+        this.operations = useX2ManyCrud(() => this.props.record.data[this.props.name], true);
+
+        this._pageIdSeq     = 0;
+        this._pickerToken   = 0;
+        this._pageChain     = Promise.resolve();
+        this._lastSelection = null;
+
+        Object.assign(this.state, {
+            pages             : [],
+            scanSource        : "",
+            scanJobId         : null,
+            stopRequested     : false,
+            adfReceived       : 0,
+            saving            : false,
+            uploading         : false,
+            importing         : false,
+            showPreview       : false,
+            previewAttachId   : null,
+            previewFilename   : "",
+            previewMimetype   : "",
+            showFilenameDialog: false,
+            pendingFilename   : "",
+            showScannerDialog : false,
+            loadingScanners   : false,
+            availableScanners : [],
+            scannerListError  : "",
+            pendingScanAction : null,
+            adfOptions        : loadAdfOptions(),
         });
 
-        this.onScannerConfirm      = this.onScannerConfirm.bind(this);
-        this.onScannerCancel       = this.onScannerCancel.bind(this);
-        this.onPreviewAttachment   = this.onPreviewAttachment.bind(this);
-        this.onRemoveAttachment    = this.onRemoveAttachment.bind(this);
-        this.onCropPage            = this.onCropPage.bind(this);
-        this.onRemovePage          = this.onRemovePage.bind(this);
-        this.onMovePage            = this.onMovePage.bind(this);
-        this.onCropHandleMouseDown = this.onCropHandleMouseDown.bind(this);
+        for (const m of [
+            "onScannerConfirm", "onScannerCancel", "onPreviewAttachment",
+            "onRemoveAttachment", "onCropPage", "onRemovePage", "onMovePage",
+        ]) {
+            this[m] = this[m].bind(this);
+        }
 
-        onMounted(() => {
-            this._pingBridge();
-            this._loadExistingAttachments();
-        });
-        onWillUnmount(() => this._closeSocket());
+        useExternalListener(window, "keydown", this._onWindowKeydown);
+
+        useEffect(
+            (show) => {
+                const el = this.filenameInputRef.el;
+                if (show && el) {
+                    el.focus();
+                    el.select();
+                }
+            },
+            () => [this.state.showFilenameDialog]
+        );
     }
 
     // ── computed ──────────────────────────────────────────────────────────────
 
-    get isReadonly() { return this.props.readonly || false; }
+    get isBusy() {
+        const s = this.state;
+        return s.scanning || s.saving || s.uploading || s.importing || s.cropBusy;
+    }
 
-    get currentAttachments() { return this.state.attachments; }
-
-    get _currentIds() {
+    get currentAttachments() {
         const list = this.props.record.data[this.props.name];
-        if (!list) return [];
-        if (Array.isArray(list.currentIds)) return list.currentIds;
-        if (list.records && list.records.length)
-            return list.records.map(r => r.resId).filter(Boolean);
-        return [];
+        if (!list || !list.records) {
+            return [];
+        }
+        return list.records.map((r) => {
+            const mimetype = r.data.mimetype || "";
+            const isPdf = mimetype === "application/pdf";
+            const isImage = mimetype.startsWith("image/");
+            let dateLabel = "";
+            try {
+                dateLabel = r.data.create_date ? formatDateTime(r.data.create_date) : "";
+            } catch {
+                dateLabel = "";
+            }
+            return {
+                id        : r.resId,
+                name      : r.data.name || _t("Unnamed"),
+                mimetype,
+                dateLabel,
+                canPreview: isPdf || isImage,
+                iconClass : isPdf ? "fa-file-pdf-o text-danger"
+                          : isImage ? "fa-file-image-o text-primary"
+                          : "fa-file-o text-secondary",
+            };
+        });
+    }
+
+    get imprintPreview() {
+        const o = this.state.adfOptions;
+        const date = new Date().toISOString().slice(0, 10);
+        const start = String(parseInt(o.imprintStart, 10) || 0).padStart(parseInt(o.imprintDigits, 10) || 5, "0");
+        return (o.imprintText || "").replaceAll("{date}", date).replaceAll("{counter}", start);
     }
 
     // ── preview ───────────────────────────────────────────────────────────────
 
     get previewUrl() {
-        if (this.state.previewAttachId)
-            return `/web/content/${this.state.previewAttachId}?inline=true`;
-        return null;
+        return this.state.previewAttachId ? `/web/content/${this.state.previewAttachId}` : null;
     }
 
     get downloadUrl() {
-        if (this.state.previewAttachId)
-            return `/web/content/${this.state.previewAttachId}?download=true`;
-        return null;
+        return this.state.previewAttachId
+            ? `/web/content/${this.state.previewAttachId}?download=true`
+            : null;
     }
 
-    onPreviewAttachment(id, name) {
-        this.state.previewAttachId = id;
-        this.state.previewFilename = name || "Document.pdf";
-        this.state.showPreview     = true;
+    get previewIsPdf() {
+        return !this.state.previewMimetype || this.state.previewMimetype === "application/pdf";
+    }
+
+    onPreviewAttachment(att) {
+        Object.assign(this.state, {
+            previewAttachId: att.id,
+            previewFilename: att.name || "Document",
+            previewMimetype: att.mimetype || "application/pdf",
+            showPreview    : true,
+        });
+    }
+
+    onPreviewPanelClick(ev) {
+        ev.stopPropagation();
     }
 
     onClosePreview() {
-        this.state.showPreview     = false;
-        this.state.previewAttachId = null;
-        this.state.previewFilename = "";
+        Object.assign(this.state, {
+            showPreview    : false,
+            previewAttachId: null,
+            previewFilename: "",
+            previewMimetype: "",
+        });
     }
 
-    // ── Scanner picker ────────────────────────────────────────────────────────
-
-    async _openScannerPicker(action) {
-        this.state.pendingScanAction  = action;
-        this.state.showScannerDialog  = true;
-        this.state.loadingScanners    = true;
-        this.state.availableScanners  = [];
-
-        try {
-            const ws = await this._getSocket();
-            const scanners = await new Promise((resolve, reject) => {
-                const timer = setTimeout(
-                    () => reject(new Error("Scanner list request timed out.")),
-                    8000
-                );
-                const prev = ws.onmessage;
-                ws.onmessage = (ev) => {
-                    clearTimeout(timer);
-                    ws.onmessage = prev;
-                    try {
-                        const d = JSON.parse(ev.data);
-                        if (d.status === "ok" && Array.isArray(d.scanners))
-                            resolve(d.scanners);
-                        else
-                            reject(new Error(d.message || "Could not retrieve scanner list."));
-                    } catch (_) {
-                        reject(new Error("Invalid response from bridge."));
-                    }
-                };
-                ws.send(JSON.stringify({ action: "list_scanners" }));
-            });
-            this.state.availableScanners = scanners;
-        } catch (e) {
-            this.state.errorMsg          = e.message;
-            this.state.showScannerDialog = false;
-            this.state.pendingScanAction = null;
-        } finally {
-            this.state.loadingScanners = false;
+    _onWindowKeydown(ev) {
+        if (ev.key !== "Escape") {
+            return;
+        }
+        if (this.state.showPreview) {
+            ev.stopPropagation();
+            this.onClosePreview();
+        } else if (this.state.showScannerDialog) {
+            ev.stopPropagation();
+            this.onScannerCancel();
+        } else if (this.state.showFilenameDialog) {
+            ev.stopPropagation();
+            this.onFilenameCancel();
         }
     }
 
-    onScannerCancel() {
-        this.state.showScannerDialog = false;
-        this.state.pendingScanAction = null;
+    // ── record / attachment helpers ───────────────────────────────────────────
+
+    async _ensureRecordSaved() {
+        const record = this.props.record;
+        if (record.resId) {
+            return;
+        }
+        const ok = await record.save();
+        if (!ok || !record.resId) {
+            throw new Error(_t(
+                "The record must be saved before documents can be attached. " +
+                "Please fill in the required fields and try again."
+            ));
+        }
     }
 
-    onScannerConfirm(scannerName) {
-        const action = this.state.pendingScanAction;
-        this.state.showScannerDialog = false;
-        this.state.pendingScanAction = null;
-        if (action === "adf") this._doScanAdf(scannerName);
-        else                  this._doScanFlatbed(scannerName);
+    async _linkAttachments(ids) {
+        await this.operations.saveRecord(ids);
+        const ok = await this.props.record.save();
+        if (!ok) {
+            throw new Error(_t("The document was created but the record could not be saved. Please save it manually."));
+        }
     }
 
-    async onRemoveAttachment(id) {
-        const attachment = this.state.attachments.find(a => a.id === id);
-        const newIds = this._currentIds.filter(i => i !== id);
-
-        await this.props.record.update({ [this.props.name]: newIds });
-        await this.props.record.save();
-
-        this.state.attachments = this.state.attachments.filter(a => a.id !== id);
-
+    async _postNote(body, attachmentIds = []) {
         const resId = this.props.record.resId;
-        if (resId && attachment) {
-            try {
-                await this.orm.call(
-                    this.props.record.resModel,
-                    "message_post",
-                    [[resId]],
-                    {
-                        body         : attachment.name,
-                        message_type : "comment",
-                        subtype_xmlid: "mail.mt_note",
+        if (!resId) {
+            return;
+        }
+        try {
+            const kwargs = { body, message_type: "comment", subtype_xmlid: "mail.mt_note" };
+            if (attachmentIds.length) {
+                kwargs.attachment_ids = attachmentIds;
+            }
+            await this.orm.call(this.props.record.resModel, "message_post", [[resId]], kwargs);
+        } catch (e) {
+            console.warn("[ScannerPdfField] chatter post failed:", e);
+        }
+    }
+
+    /** entries: [{ name, b64, mimetype }] → ir.attachment linked to the field */
+    async _uploadAttachments(entries) {
+        if (!entries.length) {
+            return [];
+        }
+        await this._ensureRecordSaved();
+        const ids = [];
+        for (let i = 0; i < entries.length; i++) {
+            const e = entries[i];
+            this.state.statusMsg = _t("Uploading") + ` "${e.name}" (${i + 1} / ${entries.length})\u2026`;
+            const [attachId] = await this.orm.create("ir.attachment", [{
+                name     : e.name,
+                type     : "binary",
+                datas    : e.b64,
+                mimetype : e.mimetype || "application/octet-stream",
+                res_model: this.props.record.resModel,
+                res_id   : this.props.record.resId,
+            }]);
+            ids.push(attachId);
+        }
+        await this._linkAttachments(ids);
+        await this._postNote(entries.map((e) => e.name).join(", "), ids);
+        return ids;
+    }
+
+    onRemoveAttachment(id) {
+        const list = this.props.record.data[this.props.name];
+        const rec = list && list.records.find((r) => r.resId === id);
+        if (!rec) {
+            return;
+        }
+        const name = rec.data.name || "";
+        this.dialog.add(ConfirmationDialog, {
+            title: _t("Remove document"),
+            body: _t("Remove this document from the record?") + `\n${name}`,
+            confirmLabel: _t("Remove"),
+            confirm: async () => {
+                try {
+                    await this.operations.removeRecord(rec);
+                    await this.props.record.save();
+                    if (this.state.previewAttachId === id) {
+                        this.onClosePreview();
                     }
-                );
-            } catch (e) {
-                console.warn("[ScannerPdfField] chatter post failed on delete:", e);
+                    await this._postNote(_t("Document removed:") + " " + name);
+                } catch (e) {
+                    this._setError(e);
+                }
+            },
+            cancel: () => {},
+        });
+    }
+
+    // ── scanner picker ────────────────────────────────────────────────────────
+
+    async _openScannerPicker(action, refresh = false) {
+        const token = ++this._pickerToken;
+        Object.assign(this.state, {
+            pendingScanAction: action,
+            showScannerDialog: true,
+            scannerListError : "",
+            errorMsg         : "",
+            scanIssue        : null,
+        });
+        if (!refresh && _scannerListCache) {
+            this.state.availableScanners = _scannerListCache;
+            this.state.loadingScanners = false;
+            return;
+        }
+        this.state.loadingScanners = true;
+        this.state.availableScanners = [];
+        try {
+            const res = await this.bridge.request("list_scanners", { refresh }, { timeout: LIST_TIMEOUT });
+            if (token !== this._pickerToken) {
+                return;
+            }
+            const list = Array.isArray(res.scanners) ? res.scanners : [];
+            _scannerListCache = list;
+            this.state.availableScanners = list;
+        } catch (e) {
+            if (token !== this._pickerToken) {
+                return;
+            }
+            if (!this.bridge.connected) {
+                this.state.showScannerDialog = false;
+                this.state.pendingScanAction = null;
+                this._setError(e);
+            } else {
+                this.state.scannerListError = e.message;
+            }
+        } finally {
+            if (token === this._pickerToken) {
+                this.state.loadingScanners = false;
             }
         }
     }
 
-    // ── crop styles ───────────────────────────────────────────────────────────
-
-    get cropStyles() {
-        const { cropX: x, cropY: y, cropW: w, cropH: h } = this.state;
-        const dark = "background:rgba(0,0,0,0.55);pointer-events:none;";
-        return {
-            overlayTop   : `position:absolute;top:0;left:0;right:0;height:${y}px;${dark}`,
-            overlayBottom: `position:absolute;left:0;right:0;top:${y + h}px;bottom:0;${dark}`,
-            overlayLeft  : `position:absolute;top:${y}px;left:0;width:${x}px;height:${h}px;${dark}`,
-            overlayRight : `position:absolute;top:${y}px;left:${x + w}px;right:0;height:${h}px;${dark}`,
-            cropBox      :
-                `position:absolute;top:${y}px;left:${x}px;` +
-                `width:${w}px;height:${h}px;` +
-                `border:2px solid #0d6efd;cursor:move;box-sizing:border-box;`,
-        };
+    onRefreshScanners() {
+        this._openScannerPicker(this.state.pendingScanAction, true);
     }
 
-    getHandleStyle(handle) {
-        return (
-            `position:absolute;` +
-            `left:calc(${handle.nx * 100}% - 8px);top:calc(${handle.ny * 100}% - 8px);` +
-            `width:16px;height:16px;` +
-            `background:white;border:2px solid #0d6efd;border-radius:3px;` +
-            `cursor:${handle.cursor};z-index:10;box-sizing:border-box;`
-        );
-    }
-
-    get cropDimensionsLabel() {
-        const img = this.cropImageRef && this.cropImageRef.el;
-        if (!img || !img.naturalWidth) return "";
-        const rect = img.getBoundingClientRect();
-        if (!rect.width) return "";
-        const sx = img.naturalWidth  / rect.width;
-        const sy = img.naturalHeight / rect.height;
-        return `${Math.round(this.state.cropW * sx)} \xD7 ${Math.round(this.state.cropH * sy)} px`;
-    }
-
-    // ── crop mouse interaction ────────────────────────────────────────────────
-
-    onCropImageLoad(ev) {
-        const img  = ev.target;
-        const rect = img.getBoundingClientRect();
-        const w    = rect.width  || img.clientWidth;
-        const h    = rect.height || img.clientHeight;
-        const m    = Math.min(16, w * 0.03);
-        this.state.cropX = m; this.state.cropY = m;
-        this.state.cropW = w - m * 2; this.state.cropH = h - m * 2;
-    }
-
-    onCropBoxMouseDown(ev) {
-        ev.preventDefault();
-        const startX = ev.clientX, startY = ev.clientY;
-        const sx = this.state.cropX, sy = this.state.cropY;
-        const cw = this.state.cropW, ch = this.state.cropH;
-        const rect = this.cropImageRef.el.getBoundingClientRect();
-        const maxW = rect.width, maxH = rect.height;
-
-        const onMove = (e) => {
-            this.state.cropX = Math.max(0, Math.min(sx + e.clientX - startX, maxW - cw));
-            this.state.cropY = Math.max(0, Math.min(sy + e.clientY - startY, maxH - ch));
-        };
-        const onUp = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup",   onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup",   onUp);
-    }
-
-    onCropHandleMouseDown(ev, handleId) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const startX = ev.clientX, startY = ev.clientY;
-        const sx = this.state.cropX, sy = this.state.cropY;
-        const sw = this.state.cropW, sh = this.state.cropH;
-        const rect = this.cropImageRef.el.getBoundingClientRect();
-        const maxW = rect.width, maxH = rect.height;
-
-        const onMove = (e) => {
-            const dx = e.clientX - startX, dy = e.clientY - startY;
-            let x = sx, y = sy, w = sw, h = sh;
-            if (handleId.includes("n")) { y = sy + dy; h = sh - dy; }
-            if (handleId.includes("s")) { h = sh + dy; }
-            if (handleId.includes("w")) { x = sx + dx; w = sw - dx; }
-            if (handleId.includes("e")) { w = sw + dx; }
-            w = Math.max(40, w); h = Math.max(25, h);
-            x = Math.max(0, Math.min(x, maxW - w));
-            y = Math.max(0, Math.min(y, maxH - h));
-            w = Math.min(w, maxW - x); h = Math.min(h, maxH - y);
-            this.state.cropX = x; this.state.cropY = y;
-            this.state.cropW = w; this.state.cropH = h;
-        };
-        const onUp = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup",   onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup",   onUp);
-    }
-
-    // ── rotation ──────────────────────────────────────────────────────────────
-
-    async onRotateLeft() {
-        if (!this.state.rawImage) return;
-        this.state.rawImage = await _rotateImage(this.state.rawImage, -90);
-    }
-
-    async onRotateRight() {
-        if (!this.state.rawImage) return;
-        this.state.rawImage = await _rotateImage(this.state.rawImage, 90);
-    }
-
-    // ── crop open / close ─────────────────────────────────────────────────────
-
-    _openCropEditor(b64, pageIdx) {
-        this.state.rawImage    = b64;
-        this.state.cropPageIdx = pageIdx;
-        this.state.showCropper = true;
-        this.state.cropX = 0; this.state.cropY = 0;
-        this.state.cropW = 100; this.state.cropH = 100;
-    }
-
-    _closeCropEditor() {
-        this.state.showCropper = false;
-        this.state.rawImage    = null;
-        this.state.cropPageIdx = -1;
-    }
-
-    // ── crop save / discard ───────────────────────────────────────────────────
-
-    async onApplyCrop() {
-        const b64 = this.state.rawImage;
-        const el  = this.cropImageRef.el;
-        if (!b64 || !el) return;
-
-        const mime    = _b64Mime(b64);
-        const natural = new Image();
-        await new Promise(res => {
-            natural.onload = res;
-            natural.src = `data:${mime};base64,` + b64;
+    onScannerCancel() {
+        this._pickerToken++;
+        Object.assign(this.state, {
+            showScannerDialog: false,
+            pendingScanAction: null,
+            loadingScanners  : false,
         });
-
-        const rect   = el.getBoundingClientRect();
-        const scaleX = natural.naturalWidth  / (rect.width  || 1);
-        const scaleY = natural.naturalHeight / (rect.height || 1);
-
-        const canvas = document.createElement("canvas");
-        canvas.width  = Math.round(this.state.cropW * scaleX);
-        canvas.height = Math.round(this.state.cropH * scaleY);
-        canvas.getContext("2d").drawImage(
-            natural,
-            this.state.cropX * scaleX, this.state.cropY * scaleY,
-            this.state.cropW * scaleX, this.state.cropH * scaleY,
-            0, 0, canvas.width, canvas.height
-        );
-        const croppedB64 = canvas.toDataURL("image/png").split(",")[1];
-        await this._commitCroppedPage(croppedB64);
     }
 
-    async onUseFullImage() {
-        await this._commitCroppedPage(this.state.rawImage);
+    onScannerConfirm(scanner) {
+        const action = this.state.pendingScanAction;
+        saveAdfOptions(this.state.adfOptions);
+        this.onScannerCancel();
+        const selection = scanner
+            ? { name: scanner.name || null, display: scanner.display || null, source: scanner.source || "" }
+            : null;
+        if (action === "adf" || (selection && selection.source === "inbox")) {
+            this._doScanAdf(selection);
+        } else {
+            this._doScanFlatbed(selection);
+        }
     }
 
-    onCancelCrop() { this._closeCropEditor(); }
+    onScanFlatbed() {
+        if (!this.isBusy) {
+            this._openScannerPicker("flatbed");
+        }
+    }
 
-    async _commitCroppedPage(b64) {
+    onScanAdf() {
+        if (!this.isBusy) {
+            this._openScannerPicker("adf");
+        }
+    }
+
+    onResumeScan() {
+        const issue = this.state.scanIssue;
+        this.state.scanIssue = null;
+        if (!issue) {
+            return;
+        }
+        if (issue.context === "adf") {
+            this._doScanAdf(this._lastSelection);
+        } else {
+            this._doScanFlatbed(this._lastSelection);
+        }
+    }
+
+    onStopScan() {
+        if (!this.state.scanJobId || this.state.stopRequested) {
+            return;
+        }
+        this.state.stopRequested = true;
+        this.state.statusMsg = _t("Stopping after the current page\u2026");
+        this.bridge.cancel(this.state.scanJobId);
+    }
+
+    _scanPayload(selection) {
+        return {
+            scanner        : selection ? selection.name : null,
+            scanner_display: selection ? selection.display : null,
+        };
+    }
+
+    _imprintPayload() {
+        const o = this.state.adfOptions;
+        if (!o.imprintEnabled) {
+            return null;
+        }
+        return {
+            enabled      : true,
+            mode         : o.imprintMode,
+            text         : o.imprintText || "{counter}",
+            counter_start: parseInt(o.imprintStart, 10) || 0,
+            digits       : parseInt(o.imprintDigits, 10) || 5,
+            position     : o.imprintPosition,
+        };
+    }
+
+    _rememberImprint(next) {
+        if (Number.isInteger(next) && this.state.adfOptions.imprintEnabled) {
+            this.state.adfOptions.imprintStart = next;
+            saveAdfOptions(this.state.adfOptions);
+        }
+    }
+
+    async _doScanFlatbed(selection) {
+        if (this.isBusy) {
+            return;
+        }
+        this._lastSelection = selection;
+        Object.assign(this.state, {
+            scanning  : true,
+            scanSource: "flatbed",
+            errorMsg  : "",
+            scanIssue : null,
+            statusMsg : _t("Connecting to scanner bridge\u2026"),
+        });
+        try {
+            await this.bridge.connect();
+            this.state.statusMsg = selection && selection.display
+                ? _t("Waiting for") + ` "${selection.display}"\u2026`
+                : _t("Waiting for default scanner\u2026");
+            const res = await this.bridge.request("scan", this._scanPayload(selection), {
+                timeout: SCAN_TIMEOUT,
+                onProgress: (m) => {
+                    this.state.statusMsg = m.message || _t("Scanning\u2026");
+                },
+            });
+            if (!res.image) {
+                throw new Error(_t("The scanner bridge returned no image."));
+            }
+            this.state.statusMsg = "";
+            this._openCropEditor(res.image, -1, { autoDetect: true });
+        } catch (e) {
+            this._handleScanError(e, "flatbed");
+        } finally {
+            this.state.scanning = false;
+            this.state.scanSource = "";
+        }
+    }
+
+    async _doScanAdf(selection) {
+        if (this.isBusy) {
+            return;
+        }
+        this._lastSelection = selection;
+        const isInbox = !!(selection && selection.source === "inbox");
+        const o = this.state.adfOptions;
+        const documents = [];
+        this._pageChain = Promise.resolve();
+
+        Object.assign(this.state, {
+            scanning     : true,
+            scanSource   : "adf",
+            scanJobId    : null,
+            stopRequested: false,
+            adfReceived  : 0,
+            errorMsg     : "",
+            scanIssue    : null,
+            statusMsg    : _t("Connecting to scanner bridge\u2026"),
+        });
+        try {
+            await this.bridge.connect();
+            this.state.statusMsg = isInbox
+                ? _t("Waiting for documents\u2026")
+                : _t("Loading document feeder \u2014 please wait\u2026");
+            const res = await this.bridge.request(
+                "scan_adf",
+                {
+                    ...this._scanPayload(selection),
+                    stream           : true,
+                    duplex           : !!o.duplex,
+                    skip_blank       : !!o.skipBlank,
+                    blank_sensitivity: o.blankSensitivity,
+                    double_feed      : !!o.doubleFeed,
+                    imprint          : this._imprintPayload(),
+                    inbox_wait       : INBOX_WAIT_SECONDS,
+                },
+                {
+                    timeout: ADF_IDLE_TIMEOUT,
+                    cancelOnTimeout: true,
+                    onStart: (id) => {
+                        this.state.scanJobId = id;
+                    },
+                    onProgress: (m) => {
+                        if (!this.state.stopRequested) {
+                            this.state.statusMsg = m.message || _t("Scanning feeder\u2026");
+                        }
+                    },
+                    onPage: (m) => {
+                        this.state.adfReceived++;
+                        if (!this.state.stopRequested) {
+                            this.state.statusMsg = _t("Page") + ` ${this.state.adfReceived} ` + _t("received\u2026");
+                        }
+                        const image = m.image;
+                        this._pageChain = this._pageChain
+                            .then(() => this._addPage(image))
+                            .catch((err) => console.warn("[ScannerPdfField] page add failed:", err));
+                    },
+                    onDocument: (m) => {
+                        documents.push({
+                            name    : m.name || "document.pdf",
+                            b64     : m.data,
+                            mimetype: m.mimetype || "application/pdf",
+                        });
+                    },
+                }
+            );
+            await this._pageChain;
+            if (Array.isArray(res.images)) {
+                // legacy bridge (< 1.9): all pages at once
+                for (const img of res.images) {
+                    await this._addPage(img);
+                    this.state.adfReceived++;
+                }
+            }
+            this._rememberImprint(res.imprint && res.imprint.next);
+            if (documents.length) {
+                await this._uploadAttachments(documents);
+            }
+            const parts = [`\u2713 ${this.state.adfReceived} ` + _t("page(s) received")];
+            if (res.skipped_blank) {
+                parts.push(`${res.skipped_blank} ` + _t("blank page(s) removed"));
+            }
+            if (documents.length) {
+                parts.push(`${documents.length} ` + _t("document(s) attached"));
+            }
+            if (res.imprint && (res.imprint.hardware || res.imprint.digital)) {
+                parts.push(res.imprint.hardware ? _t("imprinted by the scanner") : _t("digitally stamped"));
+            }
+            this.state.scanning = false;
+            this._flash(parts.join(" \u2014 "), 5000);
+            if (Array.isArray(res.warnings) && res.warnings.length) {
+                this.state.errorMsg = res.warnings.join("\n");
+            }
+        } catch (e) {
+            await this._pageChain.catch(() => {});
+            if (e.data) {
+                this._rememberImprint(e.data.imprint_next);
+            }
+            if (documents.length) {
+                try {
+                    await this._uploadAttachments(documents);
+                } catch (e2) {
+                    console.warn("[ScannerPdfField] inbox document upload failed:", e2);
+                }
+            }
+            this._handleScanError(e, "adf", this.state.adfReceived);
+        } finally {
+            Object.assign(this.state, {
+                scanning     : false,
+                scanSource   : "",
+                scanJobId    : null,
+                stopRequested: false,
+            });
+        }
+    }
+
+    // ── pages ─────────────────────────────────────────────────────────────────
+
+    async _addPage(b64) {
         const compressed = await compressPageImage(b64);
-        const thumb      = await this._makeThumbnail(compressed);
-        const idx        = this.state.cropPageIdx;
+        const thumb = await makeThumbnail(compressed);
+        this.state.pages.push({ id: ++this._pageIdSeq, b64: compressed, thumb });
+    }
 
-        if (idx === -1) {
+    async _commitCrop(b64) {
+        const compressed = await compressPageImage(b64);
+        const thumb = await makeThumbnail(compressed);
+        const idx = this.state.cropPageIdx;
+        if (idx === -1 || !this.state.pages[idx]) {
             this.state.pages.push({ id: ++this._pageIdSeq, b64: compressed, thumb });
         } else {
-            this.state.pages.splice(idx, 1, Object.assign({}, this.state.pages[idx], {
-                b64: compressed,
-                thumb,
-            }));
+            this.state.pages.splice(idx, 1, { ...this.state.pages[idx], b64: compressed, thumb });
         }
         this._closeCropEditor();
     }
 
-    // ── page management ───────────────────────────────────────────────────────
-
-    async _addPage(b64) {
-        const compressed = await compressPageImage(b64);
-        const thumb      = await this._makeThumbnail(compressed);
-        this.state.pages.push({ id: ++this._pageIdSeq, b64: compressed, thumb });
+    onCropPage(idx) {
+        if (this.isBusy || !this.state.pages[idx]) {
+            return;
+        }
+        this._openCropEditor(this.state.pages[idx].b64, idx);
     }
 
-    onCropPage(idx)   { this._openCropEditor(this.state.pages[idx].b64, idx); }
-    onRemovePage(idx) { this.state.pages.splice(idx, 1); }
+    onRemovePage(idx) {
+        this.state.pages.splice(idx, 1);
+    }
 
     onMovePage(idx, dir) {
         const to = idx + dir;
-        if (to < 0 || to >= this.state.pages.length) return;
-        const a = this.state.pages[idx];
-        const b = this.state.pages[to];
-        this.state.pages.splice(Math.min(idx, to), 2,
-            dir < 0 ? a : b,
-            dir < 0 ? b : a
-        );
+        const pages = this.state.pages;
+        if (to < 0 || to >= pages.length) {
+            return;
+        }
+        const tmp = pages[idx];
+        pages[idx] = pages[to];
+        pages[to] = tmp;
     }
 
     onClearPages() {
         this.state.pages.splice(0);
         this.state.statusMsg = "";
-        this.state.errorMsg  = "";
+        this.state.errorMsg = "";
     }
 
-    _makeThumbnail(b64, maxW, maxH) {
-        maxW = maxW === undefined ? 150 : maxW;
-        maxH = maxH === undefined ? 200 : maxH;
-        return new Promise((resolve) => {
-            const mime = _b64Mime(b64);
-            const img  = new Image();
-            img.onload = () => {
-                const scale  = Math.min(maxW / img.width, maxH / img.height, 1);
-                const canvas = document.createElement("canvas");
-                canvas.width  = Math.max(1, Math.round(img.width  * scale));
-                canvas.height = Math.max(1, Math.round(img.height * scale));
-                canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL("image/jpeg", 0.75).split(",")[1]);
-            };
-            img.onerror = () => resolve(b64.slice(0, 500));
-            img.src = `data:${mime};base64,` + b64;
-        });
-    }
+    // ── image upload (→ pages) ────────────────────────────────────────────────
 
-    // ── WebSocket helpers ─────────────────────────────────────────────────────
-
-    _restoreOnClose(ws) {
-        ws.onclose = () => {
-            this.state.bridgeStatus = "disconnected";
-            this._ws = null;
-        };
-    }
-
-    _closeSocket() {
-        if (this._ws) {
-            this._ws.onclose   = null;
-            this._ws.onerror   = null;
-            this._ws.onmessage = null;
-            try { this._ws.close(); } catch (_) {}
-            this._ws = null;
+    onUploadClick() {
+        if (this.fileInputRef.el) {
+            this.fileInputRef.el.click();
         }
     }
 
-    async _getSocket() {
-        if (this._ws && this._ws.readyState === WebSocket.OPEN)
-            return this._ws;
-
-        if (this._ws) {
-            this._ws.onclose   = null;
-            this._ws.onerror   = null;
-            this._ws.onmessage = null;
-            try { this._ws.close(); } catch (_) {}
-            this._ws = null;
+    async onFileChange(ev) {
+        const input = ev.target;
+        const files = Array.from(input.files || []);
+        input.value = "";
+        if (!files.length) {
+            return;
         }
-
-        return new Promise((resolve, reject) => {
-            let settled = false;
-            const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-
-            const ws    = new WebSocket(BRIDGE_URL);
-            const timer = setTimeout(() => {
-                try { ws.close(); } catch (_) {}
-                settle(reject, new Error("Cannot reach scanner bridge (connect timeout)."));
-            }, CONNECT_TIMEOUT);
-
-            ws.onopen = () => {
-                clearTimeout(timer);
-                this._ws = ws;
-                this.state.bridgeStatus = "connected";
-                this._restoreOnClose(ws);
-                settle(resolve, ws);
-            };
-            ws.onerror = () => {
-                clearTimeout(timer);
-                this.state.bridgeStatus = "disconnected";
-                settle(reject, new Error("Cannot connect to scanner bridge."));
-            };
-        });
-    }
-
-    async _pingBridge() {
+        this.state.errorMsg = "";
+        const images = files.filter((f) => !f.type || f.type.startsWith("image/"));
+        if (images.length !== files.length) {
+            this._setError(new Error(_t("Only image files can be added as pages. Use \"Upload File\" for other documents.")));
+            if (!images.length) {
+                return;
+            }
+        }
         try {
-            const ws = await this._getSocket();
-            await new Promise((resolve) => {
-                const tid  = setTimeout(resolve, 2000);
-                const prev = ws.onmessage;
-                ws.onmessage = (ev) => {
-                    clearTimeout(tid);
-                    ws.onmessage = prev;
-                    try {
-                        const d = JSON.parse(ev.data);
-                        if (d.status === "ok") this.state.bridgeStatus = "connected";
-                    } catch (_) {}
-                    resolve();
-                };
-                ws.send(JSON.stringify({ action: "ping" }));
-            });
-        } catch (_) { this.state.bridgeStatus = "disconnected"; }
+            if (images.length === 1) {
+                this._openCropEditor(await readFileAsBase64(images[0]), -1);
+                return;
+            }
+            this.state.importing = true;
+            for (let i = 0; i < images.length; i++) {
+                this.state.statusMsg = _t("Adding image") + ` ${i + 1} / ${images.length}\u2026`;
+                await this._addPage(await readFileAsBase64(images[i]));
+            }
+            this.state.importing = false;
+            this._flash(`\u2713 ${images.length} ` + _t("images added"));
+        } catch (e) {
+            this._setError(e);
+        } finally {
+            this.state.importing = false;
+        }
     }
 
     // ── save as PDF ───────────────────────────────────────────────────────────
 
     onSavePdf() {
-        if (!this.state.pages.length || this.state.saving) return;
+        if (!this.state.pages.length || this.isBusy) {
+            return;
+        }
         const today = new Date().toISOString().slice(0, 10);
-        this.state.pendingFilename    = `Scanned_Document_${today}`;
+        this.state.pendingFilename = `Scanned_Document_${today}`;
         this.state.showFilenameDialog = true;
     }
 
+    onFilenameKeydown(ev) {
+        if (ev.key === "Enter") {
+            ev.preventDefault();
+            this.onFilenameConfirm();
+        }
+    }
+
     onFilenameConfirm() {
-        const name = (this.state.pendingFilename || "").trim();
-        if (!name) return;
-        const final = name.endsWith(".pdf") ? name : name + ".pdf";
+        let name = sanitizeFilename(this.state.pendingFilename);
+        if (!name) {
+            return;
+        }
+        if (!name.toLowerCase().endsWith(".pdf")) {
+            name += ".pdf";
+        }
         this.state.showFilenameDialog = false;
-        this._doSavePdf(final);
+        this._doSavePdf(name);
     }
 
     onFilenameCancel() {
@@ -969,411 +1692,95 @@ class ScannerPdfField extends Component {
 
     async _doSavePdf(filename) {
         const pageCount = this.state.pages.length;
-        this.state.saving    = true;
-        this.state.errorMsg  = "";
-        this.state.statusMsg = "Connecting to bridge\u2026";
-
+        const images = this.state.pages.map((p) => p.b64);
+        Object.assign(this.state, {
+            saving   : true,
+            errorMsg : "",
+            statusMsg: _t("Connecting to bridge\u2026"),
+        });
         try {
-            const ws = await this._getSocket();
-            this.state.statusMsg =
-                `Generating PDF (${pageCount} page${pageCount > 1 ? "s" : ""})\u2026`;
-
-            const pdfB64 = await new Promise((resolve, reject) => {
-                const timer = setTimeout(
-                    () => reject(new Error(`PDF generation timed out (${PDF_TIMEOUT / 1000} s).`)),
-                    PDF_TIMEOUT
-                );
-
-                const cleanup = (restoreClose) => {
-                    restoreClose = restoreClose === undefined ? true : restoreClose;
-                    clearTimeout(timer);
-                    ws.onmessage = null;
-                    ws.onerror   = null;
-                    if (restoreClose) this._restoreOnClose(ws);
-                };
-
-                ws.onclose = () => {
-                    cleanup(false);
-                    this._ws = null;
-                    this.state.bridgeStatus = "disconnected";
-                    reject(new Error("Bridge closed the connection while generating PDF."));
-                };
-                ws.onmessage = (ev) => {
-                    let msg;
-                    try { msg = JSON.parse(ev.data); } catch (_) { return; }
-                    cleanup();
-                    if (msg.status === "ok" && msg.pdf) resolve(msg.pdf);
-                    else reject(new Error(msg.message || "PDF generation failed."));
-                };
-                ws.onerror = () => {
-                    cleanup();
-                    reject(new Error("WebSocket error during PDF generation."));
-                };
-                ws.send(JSON.stringify({
-                    action: "make_pdf",
-                    images: this.state.pages.map(p => p.b64),
-                }));
-            });
-
-            this.state.statusMsg = "Saving attachment\u2026";
-
-            const [attachId] = await this.orm.create("ir.attachment", [{
-                name     : filename,
-                type     : "binary",
-                datas    : pdfB64,
-                mimetype : "application/pdf",
-                res_model: this.props.record.resModel,
-                res_id   : this.props.record.resId || 0,
-            }]);
-
-            await this.props.record.update({
-                [this.props.name]: this._currentIds.concat([attachId]),
-            });
-
-            // ── persist M2M link to the database immediately ──────────────
-            await this.props.record.save();
-
-            this.state.attachments = this.state.attachments.concat([
-                { id: attachId, name: filename, create_date: new Date() },
-            ]);
-
-            // ── log to chatter ────────────────────────────────────────────
-            const resId = this.props.record.resId;
-            if (resId) {
-                try {
-                    await this.orm.call(
-                        this.props.record.resModel,
-                        "message_post",
-                        [[resId]],
-                        {
-                            body: filename,
-                            attachment_ids: [attachId],
-                            message_type : "comment",
-                            subtype_xmlid: "mail.mt_note",
-                        }
-                    );
-                } catch (e) {
-                    console.warn("[ScannerPdfField] chatter post failed:", e);
-                }
+            await this.bridge.connect();
+            this.state.statusMsg = _t("Generating PDF") + ` (${pageCount})\u2026`;
+            const res = await this.bridge.request("make_pdf", { images }, { timeout: PDF_TIMEOUT });
+            if (!res.pdf) {
+                throw new Error(_t("PDF generation failed."));
             }
-
-            this.state.previewAttachId = attachId;
-            this.state.previewFilename = filename;
-            this.state.showPreview     = true;
-
+            this.state.statusMsg = _t("Saving attachment\u2026");
+            const [attachId] = await this._uploadAttachments([
+                { name: filename, b64: res.pdf, mimetype: "application/pdf" },
+            ]);
             this.state.pages.splice(0);
-            this.state.statusMsg =
-                `\u2713 PDF saved \u2014 ${pageCount} page${pageCount > 1 ? "s" : ""}`;
-            setTimeout(() => { this.state.statusMsg = ""; }, 4000);
-
+            this.state.saving = false;
+            Object.assign(this.state, {
+                previewAttachId: attachId,
+                previewFilename: filename,
+                previewMimetype: "application/pdf",
+                showPreview    : true,
+            });
+            this._flash(`\u2713 ` + _t("PDF saved") + ` \u2014 ${pageCount} ` + _t("page(s)"), 4000);
         } catch (e) {
-            this.state.errorMsg  = e.message;
-            this.state.statusMsg = "";
+            this._setError(e);
         } finally {
             this.state.saving = false;
-        }
-    }
-
-    async _loadExistingAttachments() {
-        const resId    = this.props.record.resId;
-        const resModel = this.props.record.resModel;
-        if (!resId) return;
-
-        try {
-                const attachments = await this.orm.searchRead(
-                    "ir.attachment",
-                    [
-                        ["res_model", "=", resModel],
-                        ["res_id",    "=", resId],
-                    ],
-                    ["id", "name", "mimetype", "create_date"],
-                    { order: "id asc" }
-                );
-                this.state.attachments = attachments.map(r => ({
-                    id         : r.id,
-                    name       : r.name,
-                    create_date: r.create_date ? new Date(r.create_date) : null,
-                }));
-        } catch (e) {
-            console.warn("[ScannerPdfField] _loadExistingAttachments failed:", e);
         }
     }
 
     // ── direct file upload ────────────────────────────────────────────────────
 
     onDirectUploadClick() {
-        if (this.fileDirectRef.el) this.fileDirectRef.el.click();
+        if (this.fileDirectRef.el) {
+            this.fileDirectRef.el.click();
+        }
     }
 
     async onDirectFileChange(ev) {
-        const files = Array.from(ev.target.files || []);
-        if (!files.length) return;
-
-        this.state.uploading = true;
-        this.state.errorMsg  = "";
-        this.state.statusMsg =
-            `Uploading ${files.length} file${files.length > 1 ? "s" : ""}\u2026`;
-
+        const input = ev.target;
+        const files = Array.from(input.files || []);
+        input.value = "";
+        if (!files.length) {
+            return;
+        }
+        const maxSize = session.max_file_upload_size || DEFAULT_MAX_UPLOAD;
+        const tooBig = files.filter((f) => f.size > maxSize);
+        if (tooBig.length) {
+            this._setError(new Error(
+                _t("File too large:") + " " + tooBig.map((f) => f.name).join(", ") +
+                ` (max ${Math.round(maxSize / 1024 / 1024)} MB)`
+            ));
+            return;
+        }
+        Object.assign(this.state, { uploading: true, errorMsg: "" });
         try {
-            const newIds     = this._currentIds.slice();
-            const newEntries = [];
-
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                this.state.statusMsg =
-                    `Uploading "${file.name}" (${i + 1} / ${files.length})\u2026`;
-
-                const b64 = await new Promise((resolve, reject) => {
-                    const fr   = new FileReader();
-                    fr.onload  = (e) => resolve(e.target.result.split(",")[1]);
-                    fr.onerror = reject;
-                    fr.readAsDataURL(file);
+            const entries = [];
+            for (const file of files) {
+                entries.push({
+                    name    : file.name,
+                    b64     : await readFileAsBase64(file),
+                    mimetype: file.type || "application/octet-stream",
                 });
-
-                const [attachId] = await this.orm.create("ir.attachment", [{
-                    name     : file.name,
-                    type     : "binary",
-                    datas    : b64,
-                    mimetype : file.type || "application/octet-stream",
-                    res_model: this.props.record.resModel,
-                    res_id   : this.props.record.resId || 0,
-                }]);
-
-                newIds.push(attachId);
-                newEntries.push({ id: attachId, name: file.name, create_date: new Date() });
             }
-
-            await this.props.record.update({ [this.props.name]: newIds });
-
-            // ── persist M2M link to the database immediately ──────────────
-            await this.props.record.save();
-
-            this.state.attachments = this.state.attachments.concat(newEntries);
-
-            // ── log to chatter ────────────────────────────────────────────
-            const resId = this.props.record.resId;
-            if (resId) {
-                try {
-                    await this.orm.call(
-                        this.props.record.resModel,
-                        "message_post",
-                        [[resId]],
-                        {
-                            body: newEntries.map(e => e.name).join(", "),
-                            attachment_ids: newEntries.map(e => e.id),
-                            message_type : "comment",
-                            subtype_xmlid: "mail.mt_note",
-                        }
-                    );
-                } catch (e) {
-                    console.warn("[ScannerPdfField] chatter post failed:", e);
-                }
-            }
-
-            this.state.statusMsg =
-                `\u2713 ${files.length} file${files.length > 1 ? "s" : ""} uploaded`;
-            setTimeout(() => { this.state.statusMsg = ""; }, 3000);
-
+            await this._uploadAttachments(entries);
+            this.state.uploading = false;
+            this._flash(`\u2713 ${files.length} ` + _t("file(s) uploaded"));
         } catch (e) {
-            this.state.errorMsg  = e.message;
-            this.state.statusMsg = "";
+            this._setError(e);
         } finally {
             this.state.uploading = false;
-            ev.target.value = "";
         }
-    }
-
-
-    // ── scan button handlers ──────────────────────────────────────────────────
-
-    onScanFlatbed() { this._openScannerPicker("flatbed"); }
-    onScanAdf()     { this._openScannerPicker("adf"); }
-
-    async _doScanFlatbed(scannerName) {
-        scannerName = scannerName === undefined ? null : scannerName;
-        if (this.state.scanning) return;
-        this.state.scanning   = true;
-        this.state.scanSource = "flatbed";
-        this.state.errorMsg   = "";
-        this.state.statusMsg  = "Connecting to scanner bridge\u2026";
-
-        try {
-            const ws = await this._getSocket();
-            this.state.statusMsg = scannerName
-                ? `Waiting for "${scannerName}"\u2026`
-                : "Waiting for default scanner\u2026";
-
-            const imageB64 = await new Promise((resolve, reject) => {
-                const timer = setTimeout(
-                    () => reject(new Error("Scan timed out (30 s).")),
-                    SCAN_TIMEOUT
-                );
-
-                const cleanup = (restoreClose) => {
-                    restoreClose = restoreClose === undefined ? true : restoreClose;
-                    clearTimeout(timer);
-                    ws.onmessage = null;
-                    ws.onerror   = null;
-                    if (restoreClose) this._restoreOnClose(ws);
-                };
-
-                ws.onclose = () => {
-                    cleanup(false);
-                    this._ws = null;
-                    this.state.bridgeStatus = "disconnected";
-                    reject(new Error("Bridge closed the connection during scan."));
-                };
-                ws.onmessage = (ev) => {
-                    let msg;
-                    try { msg = JSON.parse(ev.data); } catch (_) { return; }
-                    if (msg.status === "scanning") {
-                        this.state.statusMsg = msg.message || "Scanning\u2026";
-                        return;
-                    }
-                    cleanup();
-                    if (msg.status === "ok" && msg.image) resolve(msg.image);
-                    else reject(new Error(msg.message || "Scan failed."));
-                };
-                ws.onerror = () => {
-                    cleanup();
-                    reject(new Error("WebSocket error during scan."));
-                };
-                ws.send(JSON.stringify({ action: "scan", scanner: scannerName }));
-            });
-
-            this._openCropEditor(imageB64, -1);
-            this.state.statusMsg = "Adjust crop then click Apply";
-
-        } catch (e) {
-            this.state.errorMsg  = e.message;
-            this.state.statusMsg = "";
-        } finally {
-            this.state.scanning   = false;
-            this.state.scanSource = "";
-        }
-    }
-
-    async _doScanAdf(scannerName) {
-        scannerName = scannerName === undefined ? null : scannerName;
-        if (this.state.scanning) return;
-        this.state.scanning   = true;
-        this.state.scanSource = "adf";
-        this.state.errorMsg   = "";
-        this.state.statusMsg  = "Connecting to scanner bridge\u2026";
-
-        try {
-            const ws = await this._getSocket();
-            this.state.statusMsg = scannerName
-                ? `Loading feeder on "${scannerName}"\u2026`
-                : "Loading document feeder \u2014 please wait\u2026";
-
-            const images = await new Promise((resolve, reject) => {
-                const timer = setTimeout(
-                    () => reject(new Error("ADF scan timed out (2 min).")),
-                    ADF_TIMEOUT
-                );
-
-                const cleanup = (restoreClose) => {
-                    restoreClose = restoreClose === undefined ? true : restoreClose;
-                    clearTimeout(timer);
-                    ws.onmessage = null;
-                    ws.onerror   = null;
-                    if (restoreClose) this._restoreOnClose(ws);
-                };
-
-                ws.onclose = () => {
-                    cleanup(false);
-                    this._ws = null;
-                    this.state.bridgeStatus = "disconnected";
-                    reject(new Error("Bridge closed the connection during ADF scan."));
-                };
-                ws.onmessage = (ev) => {
-                    let msg;
-                    try { msg = JSON.parse(ev.data); } catch (_) { return; }
-                    if (msg.status === "scanning") {
-                        this.state.statusMsg = msg.message || "Scanning feeder\u2026";
-                        return;
-                    }
-                    cleanup();
-                    if (msg.status === "ok" && msg.images) resolve(msg.images);
-                    else reject(new Error(msg.message || "ADF scan failed."));
-                };
-                ws.onerror = () => {
-                    cleanup();
-                    reject(new Error("WebSocket error during ADF scan."));
-                };
-                ws.send(JSON.stringify({ action: "scan_adf", scanner: scannerName }));
-            });
-
-            const total = images.length;
-            for (let i = 0; i < total; i++) {
-                this.state.statusMsg = `Processing page ${i + 1} of ${total}\u2026`;
-                await this._addPage(images[i]);
-            }
-
-            this.state.statusMsg =
-                `\u2713 ${total} page${total > 1 ? "s" : ""} scanned from feeder`;
-            setTimeout(() => { this.state.statusMsg = ""; }, 4000);
-
-        } catch (e) {
-            this.state.errorMsg  = e.message;
-            this.state.statusMsg = "";
-        } finally {
-            this.state.scanning   = false;
-            this.state.scanSource = "";
-        }
-    }
-
-    onUploadClick() {
-        if (this.fileInputRef.el) this.fileInputRef.el.click();
-    }
-
-    async onFileChange(ev) {
-        const files = Array.from(ev.target.files || []);
-        if (!files.length) return;
-        this.state.errorMsg = "";
-
-        const readFile = (file) => new Promise((resolve, reject) => {
-            const fr   = new FileReader();
-            fr.onload  = (e) => resolve(e.target.result.split(",")[1]);
-            fr.onerror = reject;
-            fr.readAsDataURL(file);
-        });
-
-        if (files.length === 1) {
-            const b64 = await readFile(files[0]);
-            this._openCropEditor(b64, -1);
-        } else {
-            for (let i = 0; i < files.length; i++) {
-                this.state.statusMsg = `Adding image ${i + 1} of ${files.length}\u2026`;
-                const b64 = await readFile(files[i]);
-                await this._addPage(b64);
-            }
-            this.state.statusMsg = `\u2713 ${files.length} images added`;
-            setTimeout(() => { this.state.statusMsg = ""; }, 3000);
-        }
-
-        ev.target.value = "";
     }
 }
 
-
-ScannerPdfField.template = "scanner_integration.ScannerPdfField";
-ScannerPdfField.props = { ...standardFieldProps };
-
-const scannerPdfField = {
+export const scannerPdfField = {
     component: ScannerPdfField,
+    displayName: _t("Scanner PDF Documents"),
     supportedTypes: ["many2many"],
     isEmpty: () => false,
-    fieldDependencies: [],
-    // optional if you later want Odoo to preload attachment fields:
-     relatedFields: [
-         { name: "name", type: "char" },
-         { name: "mimetype", type: "char" },
-         { name: "create_date", type: "datetime" },
-     ],
+    relatedFields: [
+        { name: "name", type: "char" },
+        { name: "mimetype", type: "char" },
+        { name: "create_date", type: "datetime" },
+    ],
 };
-
 
 registry.category("fields").add("scanner_image", scannerImageField);
 registry.category("fields").add("scanner_pdf", scannerPdfField);

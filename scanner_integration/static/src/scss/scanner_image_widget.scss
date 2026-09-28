@@ -1,0 +1,289 @@
+.o_scanner_field {
+    $scn-bg: #0d1117;
+    $scn-bar: #161b22;
+    $scn-stage: #1c2128;
+    $scn-border: #30363d;
+    $scn-text: #e6edf3;
+    $scn-muted: #8b949e;
+    $scn-accent: #7dd3fc;
+    $scn-blue: #0d6efd;
+
+    // ── generic ──────────────────────────────────────────────────────────────
+    .o_scn_dark { background: $scn-bg; }
+    .o_scn_border { border-color: $scn-border !important; }
+    .o_scn_bar { background: $scn-bar; color: $scn-text; }
+    .o_scn_bar_top { border-bottom: 1px solid $scn-border; }
+    .o_scn_bar_bottom { border-top: 1px solid $scn-border; }
+    .o_scn_muted { color: $scn-muted; }
+    .o_scn_accent { color: $scn-accent; }
+    .o_scn_dim { color: $scn-accent; }
+    .o_scn_sep { border-left: 1px solid $scn-border; }
+    .o_scn_prewrap { white-space: pre-line; }
+    .o_scn_contain { object-fit: contain; }
+
+    // ── crop editor ──────────────────────────────────────────────────────────
+    .o_scn_stage {
+        max-height: 65vh;
+        min-height: 300px;
+        background: $scn-stage;
+        user-select: none;
+    }
+    .o_scn_stage_inner { position: relative; line-height: 0; }
+    .o_scn_crop_img {
+        display: block;
+        width: 100%;
+        height: auto;
+        -webkit-user-drag: none;
+    }
+    .o_scn_shade {
+        position: absolute;
+        background: rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+    }
+    .o_scn_crop_box {
+        position: absolute;
+        border: 2px solid $scn-blue;
+        cursor: move;
+        box-sizing: border-box;
+        touch-action: none;
+    }
+    .o_scn_grid {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+            linear-gradient(rgba(13, 110, 253, 0.2) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(13, 110, 253, 0.2) 1px, transparent 1px);
+        background-size: 100% 33.33%, 33.33% 100%;
+    }
+    .o_scn_corner {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        pointer-events: none;
+        border: 0 solid $scn-blue;
+    }
+    .o_scn_corner_tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; }
+    .o_scn_corner_tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; }
+    .o_scn_corner_bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; }
+    .o_scn_corner_br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; }
+    .o_scn_handle {
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        transform: translate(-50%, -50%);
+        background: #fff;
+        border: 2px solid $scn-blue;
+        border-radius: 3px;
+        z-index: 10;
+        box-sizing: border-box;
+        touch-action: none;
+    }
+    .o_scn_btn_dark {
+        background: #21262d;
+        color: $scn-text;
+        border: 1px solid $scn-border;
+        &:hover:not(:disabled) { border-color: $scn-accent; color: $scn-accent; }
+    }
+
+    // ── cheque preview ───────────────────────────────────────────────────────
+    .o_scn_preview_box { min-height: 160px; max-height: 320px; }
+    .o_scn_preview_img { max-height: 320px; object-fit: contain; }
+
+    // ── toolbar colours ──────────────────────────────────────────────────────
+    .o_scn_btn_adf { background: #0e7490; border-color: #0e7490; }
+    .o_scn_btn_upload { background: #6f42c1; border-color: #6f42c1; }
+
+    // ── scanner issue alert (double feed / jam / cover open…) ────────────────
+    .o_scn_issue {
+        border-left-width: 4px;
+        .fa-2x { width: 32px; text-align: center; flex-shrink: 0; }
+    }
+
+    // ── attachment rows ──────────────────────────────────────────────────────
+    .o_scn_att_row {
+        background: #fff;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 6px 10px;
+        min-height: 38px;
+    }
+    .o_scn_att_idx { color: #8c959f; font-size: 0.65rem; min-width: 18px; text-align: right; flex-shrink: 0; }
+    .o_scn_att_name {
+        color: #24292f;
+        font-size: 0.75rem;
+        flex: 1;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    .o_scn_att_date { color: #57606a; font-size: 0.65rem; white-space: nowrap; flex-shrink: 0; }
+    .o_scn_icon_btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 24px;
+        border-radius: 4px;
+        background: transparent;
+        color: #57606a;
+        border: 1px solid #d0d7de;
+        font-size: 0.7rem;
+        flex-shrink: 0;
+        text-decoration: none;
+        cursor: pointer;
+        &:disabled { opacity: 0.5; cursor: not-allowed; }
+    }
+    .o_scn_icon_preview:hover { color: #0969da; border-color: #0969da; }
+    .o_scn_icon_download:hover { color: #1a7f37; border-color: #1a7f37; }
+    .o_scn_icon_remove { color: #cf222e; &:hover:not(:disabled) { border-color: #cf222e; } }
+
+    // ── page thumbnails (large ADF batches scroll inside the box) ────────────
+    .o_scn_pages { max-height: 460px; overflow-y: auto; }
+    .o_scn_page { width: 96px; }
+    .o_scn_thumb {
+        height: 128px;
+        background: $scn-stage;
+        border-color: $scn-border !important;
+        cursor: pointer;
+        .o_scn_thumb_hover {
+            background: rgba(13, 110, 253, 0.3);
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        &:hover .o_scn_thumb_hover { opacity: 1; }
+    }
+    .o_scn_page_no {
+        background: rgba(13, 110, 253, 0.9);
+        color: #fff;
+        font-size: 0.6rem;
+        line-height: 1.5;
+    }
+    .o_scn_page_btn {
+        font-size: 0.7rem;
+        line-height: 1.6;
+        background: #21262d;
+        color: $scn-muted;
+        border: 1px solid $scn-border;
+        &:hover:not(:disabled) { color: $scn-text; }
+    }
+    .o_scn_page_btn_danger { color: #f85149; }
+
+    .o_scn_empty { min-height: 140px; background: #f8f9fa; border-style: dashed !important; }
+    .o_scn_empty_icon { opacity: 0.3; color: #dc3545; }
+
+    // ── modals ───────────────────────────────────────────────────────────────
+    .o_scn_modal_backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 1055;
+    }
+    .o_scn_modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1056;
+        max-width: 95vw;
+        max-height: 92vh;
+        overflow-y: auto;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        padding: 24px;
+    }
+    .o_scn_picker { width: 560px; }
+    .o_scn_filename_dialog { width: 420px; }
+    .o_scn_options {
+        background: #f6f8fa;
+        .form-check-label { font-size: 0.85rem; }
+        code { font-size: 0.75rem; }
+    }
+    .o_scn_scanner_list { max-height: 45vh; overflow-y: auto; }
+
+    // ── preview ──────────────────────────────────────────────────────────────
+    .o_scn_preview_backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1060;
+        background: rgba(0, 0, 0, 0.82);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .o_scn_preview_panel {
+        background: $scn-stage;
+        border: 1px solid $scn-border;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        width: 88vw;
+        max-width: 1040px;
+        height: 90vh;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+        overflow: hidden;
+    }
+    .o_scn_preview_header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: $scn-bar;
+        border-bottom: 1px solid $scn-border;
+        flex-shrink: 0;
+    }
+    .o_scn_preview_icon { color: #f85149; font-size: 1.1rem; }
+    .o_scn_preview_title {
+        color: $scn-text;
+        font-weight: 600;
+        font-size: 0.9rem;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .o_scn_preview_action {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 5px;
+        font-size: 0.8rem;
+        background: #21262d;
+        color: $scn-muted;
+        border: 1px solid $scn-border;
+        text-decoration: none;
+        &:hover { color: $scn-text; }
+    }
+    .o_scn_preview_close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 5px;
+        border: none;
+        background: #21262d;
+        color: $scn-muted;
+        &:hover { background: #f85149; color: #fff; }
+    }
+    .o_scn_preview_body {
+        flex: 1;
+        overflow: hidden;
+        background: $scn-bg;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .o_scn_preview_frame { width: 100%; height: 100%; border: none; display: block; }
+    .o_scn_preview_image { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .o_scn_preview_footer {
+        padding: 6px 16px;
+        background: $scn-bar;
+        border-top: 1px solid $scn-border;
+        color: $scn-muted;
+        display: flex;
+        justify-content: space-between;
+        flex-shrink: 0;
+    }
+}

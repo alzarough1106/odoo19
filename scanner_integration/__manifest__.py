@@ -1,6 +1,6 @@
 {
     'name': 'Direct Document Scanner',
-    'version': '18.0.1.0.0',
+    'version': '18.0.2.0.0',
     'summary': 'Scan documents directly into Odoo using any locally connected scanner — no plugins, no cloud.',
     'description': """
 Direct Document Scanner
@@ -57,8 +57,9 @@ Requirements
 
     'assets': {
         'web.assets_backend': [
-            'scanner_integration/static/src/xml/scanner_image_widget.xml',
+            'scanner_integration/static/src/scss/scanner_image_widget.scss',
             'scanner_integration/static/src/js/scanner_image_widget.js',
+            'scanner_integration/static/src/xml/scanner_image_widget.xml',
         ],
     },
     'external_dependencies': {
