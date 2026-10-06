@@ -1,6 +1,6 @@
 {
     'name': 'Direct Document Scanner',
-    'version': '19.0.1.0.0',
+    'version': '19.0.2.0.0',
     'summary': 'Scan documents directly into Odoo using any locally connected scanner — no plugins, no cloud.',
     'description': """
 Direct Document Scanner
