@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+<t t-name="sttl_dynamic_bank_cheque_print.ChequeBrowserPrintAction">
+    <div class="o_action d-flex justify-content-center align-items-start"
+         style="min-height:100vh; background:#f1f5f9; padding:2rem 1rem;">
+
+        <!--
+            Card widens automatically when the iframe preview is visible
+            so the cheque has room to breathe.
+        -->
+        <div class="card shadow"
+             t-attf-style="
+               width:      {{ state.step === 'preview' || state.step === 'confirm' ? '860px' : '380px' }};
+               max-width:  95vw;
+               transition: width .3s ease;
+             ">
+
+            <!-- ── Header ──────────────────────────────────────────────── -->
+            <div class="card-header bg-primary text-white d-flex align-items-center gap-2">
+                <i class="fa fa-print fa-lg"/>
+                <strong>Print via Browser</strong>
+            </div>
+
+            <!-- ── Body ────────────────────────────────────────────────── -->
+            <div class="card-body p-4">
+
+                <!-- LOADING ─────────────────────────────────────────────── -->
+                <div t-if="state.step === 'loading'" class="text-center py-3">
+                    <i class="fa fa-spinner fa-spin fa-2x text-primary d-block mb-3"/>
+                    <p class="text-muted mb-0">Generating cheque preview…</p>
+                </div>
+
+                <!-- PREVIEW + CONFIRM ───────────────────────────────────── -->
+                <!--
+                    The iframe stays mounted across both steps so the user
+                    can see the cheque while answering the confirm question.
+                -->
+                <t t-if="state.step === 'preview' || state.step === 'confirm'">
+
+                    <!-- Spinner shown until iframe fires its onload event -->
+                    <div t-if="!state.iframeReady" class="text-center py-3">
+                        <i class="fa fa-spinner fa-spin fa-2x text-primary d-block mb-2"/>
+                        <p class="text-muted small mb-0">Loading preview…</p>
+                    </div>
+
+                    <!-- Iframe — hidden (not removed) while loading so the
+                         browser can fetch in the background                 -->
+                    <div t-attf-class="mb-3 rounded overflow-hidden {{ !state.iframeReady ? 'd-none' : '' }}"
+                         style="border:1px solid #dee2e6;">
+                        <iframe
+                            t-ref="previewIframe"
+                            t-att-src="state.printUrl"
+                            style="width:100%; height:360px; border:none; display:block;"
+                            title="Cheque Preview"
+                            t-on-load="onIframeLoad"
+                            t-on-error="onIframeError"
+                        />
+                    </div>
+
+                    <!-- PREVIEW actions ─────────────────────────────────── -->
+                    <div t-if="state.step === 'preview'"
+                         class="d-flex justify-content-center gap-2 flex-wrap">
+                        <button class="btn btn-primary"
+                                t-att-disabled="!state.iframeReady"
+                                t-on-click="onPrintClick">
+                            <i class="fa fa-print me-2"/>Print Cheque
+                        </button>
+                        <button class="btn btn-outline-secondary"
+                                t-on-click="onCloseClick">
+                            Cancel
+                        </button>
+                    </div>
+
+                    <!-- CONFIRM actions ─────────────────────────────────── -->
+                    <div t-if="state.step === 'confirm'" class="text-center">
+                        <p class="fw-bold mb-3">
+                            <i class="fa fa-question-circle text-warning me-2"/>
+                            Did the cheque print correctly?
+                        </p>
+                        <div class="d-flex justify-content-center gap-2 flex-wrap">
+                            <button class="btn btn-success"
+                                    t-on-click="onConfirmPrinted">
+                                <i class="fa fa-check me-1"/>Yes — Mark as Printed
+                            </button>
+                            <button class="btn btn-warning"
+                                    t-on-click="onReprintClick">
+                                <i class="fa fa-refresh me-1"/>Reprint
+                            </button>
+                            <button class="btn btn-outline-secondary"
+                                    t-on-click="onCloseClick">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                </t>
+
+                <!-- DONE ────────────────────────────────────────────────── -->
+                <div t-if="state.step === 'done'" class="text-center py-3">
+                    <i class="fa fa-check-circle fa-3x text-success d-block mb-3"/>
+                    <p class="fw-bold text-success mb-1">Cheque printed successfully!</p>
+                    <p class="text-muted small mb-3">Closing automatically…</p>
+                    <button class="btn btn-outline-secondary"
+                            t-on-click="onCloseClick">
+                        Close Now
+                    </button>
+                </div>
+
+                <!-- ERROR ───────────────────────────────────────────────── -->
+                <div t-if="state.step === 'error'" class="text-center py-2">
+                    <i class="fa fa-times-circle fa-3x text-danger d-block mb-3"/>
+                    <div class="alert alert-danger text-start">
+                        <i class="fa fa-exclamation-triangle me-2"/>
+                        <t t-esc="state.message"/>
+                    </div>
+                    <div class="d-flex justify-content-center gap-2 flex-wrap">
+                        <a t-att-href="state.printUrl + '?autoprint=1'"
+                           target="_blank"
+                           class="btn btn-outline-primary">
+                            <i class="fa fa-external-link me-1"/>Open in new tab
+                        </a>
+                        <button class="btn btn-outline-secondary"
+                                t-on-click="onCloseClick">
+                            Close
+                        </button>
+                    </div>
+                </div>
+
+            </div><!-- /card-body -->
+        </div><!-- /card -->
+    </div>
+</t>
+
+</templates>

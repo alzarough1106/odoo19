@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+<t t-name="bank_cheque_print.ConfigureCanvas">
+
+    <div class="o_action d-flex flex-column"
+         style="min-height:100vh;background:#f1f5f9;outline:none;"
+         tabindex="0"
+         t-on-keydown="onKeyDown">
+
+        <!-- ── Top bar ───────────────────────────────────────────────────── -->
+        <div class="d-flex align-items-center gap-3 px-4 py-2
+                    bg-white border-bottom shadow-sm flex-shrink-0">
+            <button class="btn btn-sm btn-outline-secondary" t-on-click="onBack">
+                <i class="fa fa-arrow-left me-1"/>Back
+            </button>
+            <span class="fw-bold fs-5">Configure Cheque Layout</span>
+            <span class="text-muted" t-if="state.bookName">
+                — <t t-esc="state.bookName"/>
+            </span>
+
+            <!-- ── RTL badge ─────────────────────────────────────────────── -->
+            <span t-if="state.isRtl"
+                  class="badge ms-1"
+                  style="background:#f59e0b;color:#1e1e1e;font-size:11px;
+                         letter-spacing:.5px;">
+                ← RTL
+            </span>
+
+            <div class="ms-auto">
+                <button class="btn btn-primary btn-sm"
+                        t-on-click="onSave"
+                        t-att-disabled="state.saving or state.loading">
+                    <i t-attf-class="fa #{state.saving ? 'fa-spinner fa-spin' : 'fa-save'} me-1"/>
+                    <t t-esc="state.saving ? 'Saving…' : 'Save Layout'"/>
+                </button>
+            </div>
+        </div>
+
+        <!-- ── Loading ───────────────────────────────────────────────────── -->
+        <div t-if="state.loading"
+             class="d-flex justify-content-center align-items-center flex-grow-1">
+            <div class="text-center text-muted py-5">
+                <i class="fa fa-spinner fa-spin fa-2x d-block mb-2 text-primary"/>
+                Loading…
+            </div>
+        </div>
+
+        <!-- ── Main editor ───────────────────────────────────────────────── -->
+        <div t-else="" class="d-flex flex-grow-1" style="overflow:hidden;min-height:0;">
+
+            <!-- LEFT: field list ────────────────────────────────────────── -->
+            <div class="bg-white border-end d-flex flex-column flex-shrink-0"
+                 style="width:170px;overflow-y:auto;">
+                <div class="px-3 py-2 bg-light border-bottom
+                            small fw-bold text-uppercase text-muted">
+                    Fields
+                </div>
+                <t t-foreach="state.attrs" t-as="a" t-key="a.id">
+                    <button t-on-click="() => state.selectedId = a.id"
+                            t-attf-class="btn btn-sm text-start w-100 rounded-0
+                                          border-0 border-bottom px-3 py-2"
+                            t-attf-style="
+                                border-left: 4px solid #{a.color} !important;
+                                background:  #{isSelected(a) ? a.color+'18' : 'white'};
+                                font-weight: #{isSelected(a) ? '700' : '400'};
+                                color:       #{isSelected(a) ? a.color : '#374151'};
+                            ">
+                        <t t-esc="a.label"/>
+                        <!-- small RTL anchor hint for RTL-aware fields -->
+                        <t t-if="isRtlField(a)">
+                            <span style="font-size:9px;opacity:.6;"> ⇤</span>
+                        </t>
+                    </button>
+                </t>
+            </div>
+
+            <!-- CENTER: canvas ──────────────────────────────────────────── -->
+            <div class="flex-grow-1 d-flex flex-column align-items-center p-3"
+                 style="overflow:auto;background:#e2e8f0;">
+
+                <p class="small text-muted mb-2 text-center">
+                    <i class="fa fa-arrows me-1"/>Drag to move ·
+                    <i class="fa fa-expand me-1"/>Corner handle to resize ·
+                    Arrow keys to nudge (Shift = 10 px)
+                    <t t-if="state.isRtl">
+                        · <strong style="color:#d97706;">RTL mode</strong>:
+                        text fields are anchored to their <strong>right edge (x2)</strong>
+                    </t>
+                </p>
+
+                <!-- Fixed 800×400 canvas -->
+                <div t-ref="canvas"
+                     style="position:relative;
+                            width:800px;height:400px;
+                            max-width:100%;
+                            background:#fffde7;
+                            box-shadow:0 4px 24px rgba(0,0,0,0.18);
+                            border-radius:4px;
+                            overflow:hidden;
+                            user-select:none;
+                            flex-shrink:0;">
+
+                    <!-- Cheque background image -->
+                    <img t-if="state.bgImage"
+                         t-attf-src="data:image/png;base64,#{state.bgImage}"
+                         style="position:absolute;top:0;left:0;
+                                width:100%;height:100%;object-fit:fill;
+                                pointer-events:none;"/>
+
+                    <!-- Subtle grid -->
+                    <svg style="position:absolute;top:0;left:0;
+                                width:100%;height:100%;pointer-events:none;">
+                        <defs>
+                            <pattern id="g10" width="10" height="10"
+                                     patternUnits="userSpaceOnUse">
+                                <path d="M10 0L0 0 0 10" fill="none"
+                                      stroke="#94a3b8" stroke-width="0.2" opacity="0.3"/>
+                            </pattern>
+                            <pattern id="g50" width="50" height="50"
+                                     patternUnits="userSpaceOnUse">
+                                <rect width="50" height="50" fill="url(#g10)"/>
+                                <path d="M50 0L0 0 0 50" fill="none"
+                                      stroke="#94a3b8" stroke-width="0.5" opacity="0.4"/>
+                            </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#g50)"/>
+                    </svg>
+
+                    <!-- Attribute boxes -->
+                    <t t-foreach="state.attrs" t-as="a" t-key="a.id">
+                        <t t-set="sel"    t-value="isSelected(a)"/>
+                        <t t-set="rtlFld" t-value="isRtlField(a)"/>
+
+                        <!-- Bounding box -->
+                        <div t-attf-style="
+                                position:    absolute;
+                                left:        #{a.x1}px;
+                                top:         #{a.y1}px;
+                                width:       #{bw(a)}px;
+                                height:      #{bh(a)}px;
+                                border:      #{sel ? 2 : 1}px #{sel ? 'solid' : 'dashed'} #{a.color};
+                                background:  #{a.color}#{sel ? '22' : '0d'};
+                                box-sizing:  border-box;
+                                cursor:      move;
+                                z-index:     #{sel ? 20 : 10};"
+                             t-on-mousedown="(e) => onBoxMouseDown(e, a.id, 'move')">
+
+                            <!-- Field label badge.
+                                 LTR fields: top-left.
+                                 RTL-aware fields: top-right (mirrors where the
+                                 text anchor will be in the printed output). -->
+                            <span t-attf-style="
+                                    display:     block;
+                                    font-size:   9px;
+                                    font-weight: bold;
+                                    padding:     2px 4px;
+                                    color:       #{a.color};
+                                    white-space: nowrap;
+                                    overflow:    hidden;
+                                    pointer-events: none;
+                                    text-shadow: 0 0 4px white;
+                                    text-align:  #{rtlFld ? 'right' : 'left'};">
+                                <t t-esc="a.label"/>
+                            </span>
+
+                            <!-- RTL anchor marker — vertical line on the right
+                                 edge of the box, visible only for RTL-aware fields -->
+                            <div t-if="rtlFld"
+                                 t-attf-style="
+                                    position:   absolute;
+                                    right:      0;
+                                    top:        0;
+                                    bottom:     0;
+                                    width:      3px;
+                                    background: #{a.color};
+                                    opacity:    0.6;
+                                    pointer-events: none;"/>
+
+                            <!-- SE resize handle (selected only) -->
+                            <div t-if="sel"
+                                 t-attf-style="
+                                    position:     absolute;
+                                    right:        -5px;
+                                    bottom:       -5px;
+                                    width:        10px;
+                                    height:       10px;
+                                    border-radius:2px;
+                                    background:   #{a.color};
+                                    border:       2px solid white;
+                                    cursor:       se-resize;
+                                    z-index:      30;"
+                                 t-on-mousedown="(e) => onBoxMouseDown(e, a.id, 'se')"/>
+                        </div>
+
+                        <!-- Coordinate tooltip on selected box.
+                             RTL-aware fields additionally show x2 prominently
+                             because that right edge is the print anchor. -->
+                        <div t-if="sel"
+                             t-attf-style="
+                                position:    absolute;
+                                left:        #{a.x1}px;
+                                top:         #{a.y1 > 18 ? a.y1 - 18 : a.y1 + bh(a) + 2}px;
+                                font-size:   9px;
+                                font-family: monospace;
+                                color:       white;
+                                background:  #{a.color};
+                                padding:     1px 4px;
+                                border-radius:3px;
+                                white-space: nowrap;
+                                z-index:     25;
+                                pointer-events:none;">
+                            (<t t-esc="a.x1"/>,<t t-esc="a.y1"/>)
+                            <t t-esc="bw(a)"/>×<t t-esc="bh(a)"/>
+                            <t t-if="rtlFld">
+                                · ⇤ x2=<t t-esc="a.x2"/>
+                            </t>
+                        </div>
+                    </t>
+
+                </div><!-- /canvas -->
+
+                <p class="small text-muted mt-2">
+                    Canvas reference: 800 × 400 px — scales proportionally to physical mm at print time
+                </p>
+            </div>
+
+            <!-- RIGHT: properties panel ─────────────────────────────────── -->
+            <div class="bg-white border-start d-flex flex-column flex-shrink-0"
+                 style="width:200px;overflow-y:auto;">
+                <div class="px-3 py-2 bg-light border-bottom
+                            small fw-bold text-uppercase text-muted">
+                    Properties
+                </div>
+
+                <div t-if="selected" class="p-3">
+                    <div class="fw-bold small mb-3"
+                         t-attf-style="color:#{selected.color};">
+                        <t t-esc="selected.label"/>
+                    </div>
+
+                    <!-- RTL anchor note for RTL-aware fields -->
+                    <div t-if="isRtlField(selected)"
+                         class="rounded p-2 mb-3 small"
+                         style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;">
+                        <i class="fa fa-info-circle me-1"/>
+                        RTL field — <strong>x2</strong> is the print anchor
+                        (right edge of text).
+                    </div>
+
+                    <!-- Coordinate inputs -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label mb-0"
+                                   style="font-size:10px;color:#6b7280;">X1</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   t-att-value="selected.x1"
+                                   t-on-change="(e) => setField('x1', e)"/>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-0"
+                                   style="font-size:10px;color:#6b7280;">Y1</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   t-att-value="selected.y1"
+                                   t-on-change="(e) => setField('y1', e)"/>
+                        </div>
+                        <div class="col-6">
+                            <!-- x2 label is highlighted for RTL-aware fields -->
+                            <label class="form-label mb-0"
+                                   t-attf-style="font-size:10px;
+                                       color: #{isRtlField(selected) ? '#d97706' : '#6b7280'};
+                                       font-weight: #{isRtlField(selected) ? '700' : '400'};">
+                                X2<t t-if="isRtlField(selected)"> ⇤</t>
+                            </label>
+                            <input type="number" class="form-control form-control-sm"
+                                   t-att-value="selected.x2"
+                                   t-on-change="(e) => setField('x2', e)"/>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-0"
+                                   style="font-size:10px;color:#6b7280;">Y2</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   t-att-value="selected.y2"
+                                   t-on-change="(e) => setField('y2', e)"/>
+                        </div>
+                    </div>
+
+                    <!-- Size read-out -->
+                    <div class="rounded p-2 mb-3 small text-muted"
+                         style="background:#f8fafc;border:1px solid #e2e8f0;">
+                        Size: <strong><t t-esc="bw(selected)"/>×
+                        <t t-esc="bh(selected)"/>
+                        px</strong>
+                    </div>
+
+                    <!-- Font size -->
+                    <div class="mb-2">
+                        <label class="form-label mb-1"
+                               style="font-size:10px;color:#6b7280;">Font Size (px)</label>
+                        <input type="number" class="form-control form-control-sm"
+                               min="6" max="72"
+                               t-att-value="selected.font_size"
+                               t-on-change="(e) => setField('font_size', e)"/>
+                    </div>
+
+                    <div class="text-muted mt-3" style="font-size:10px;line-height:1.7;">
+                        <i class="fa fa-keyboard-o me-1 text-primary"/>
+                        Arrow keys: 1 px nudge
+                        <br/>
+                        <kbd>Shift</kbd>
+                        + Arrow: 10 px
+                    </div>
+                </div>
+
+                <div t-else="" class="p-3 text-muted small">
+                    Select a field from the list to edit its position.
+                </div>
+            </div>
+
+        </div><!-- /editor -->
+    </div>
+
+</t>
+</templates>

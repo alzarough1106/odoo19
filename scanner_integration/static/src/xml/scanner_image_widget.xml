@@ -1,0 +1,744 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     ICON COMPONENT  (inline SVG, no dependency on Font Awesome / Odoo icon fonts)
+     Template of the ScannerIcon component defined in scanner_image_widget.js.
+     Usage (Owl 3, component props):
+        <ScannerIcon name="'eye'"/>
+        <ScannerIcon name="'eye'" cls="'me-1 text-primary'"/>
+════════════════════════════════════════════════════════════════════════ -->
+
+    <t t-name="scanner_integration.ScannerIcon">
+        <svg t-if="this.props.name === 'eye'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        <svg t-elif="this.props.name === 'download'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <svg t-elif="this.props.name === 'upload'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <svg t-elif="this.props.name === 'trash'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+        <svg t-elif="this.props.name === 'x'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+        <svg t-elif="this.props.name === 'check'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <svg t-elif="this.props.name === 'check-circle'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <svg t-elif="this.props.name === 'warning'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <svg t-elif="this.props.name === 'info'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        <svg t-elif="this.props.name === 'crop'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/>
+        </svg>
+        <svg t-elif="this.props.name === 'magic'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M17.8 6.2L19 5"/><path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/>
+        </svg>
+        <svg t-elif="this.props.name === 'move'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
+        </svg>
+        <svg t-elif="this.props.name === 'expand'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+        </svg>
+        <svg t-elif="this.props.name === 'rotate-left'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+        </svg>
+        <svg t-elif="this.props.name === 'rotate-right'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        <svg t-elif="this.props.name === 'refresh'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        <svg t-elif="this.props.name === 'dot'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/>
+        </svg>
+        <svg t-elif="this.props.name === 'play'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polygon points="6 3 20 12 6 21 6 3" fill="currentColor"/>
+        </svg>
+        <svg t-elif="this.props.name === 'stop'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="5" y="5" width="14" height="14" rx="1" fill="currentColor"/>
+        </svg>
+        <svg t-elif="this.props.name === 'star'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="currentColor"/>
+        </svg>
+        <svg t-elif="this.props.name === 'print'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+        </svg>
+        <svg t-elif="this.props.name === 'copy'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        <svg t-elif="this.props.name === 'paperclip'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+        <svg t-elif="this.props.name === 'image'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <svg t-elif="this.props.name === 'file-pdf'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+        <svg t-elif="this.props.name === 'file-image'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="9.5" cy="12.5" r="1.5"/><polyline points="20 17 16 13 8 21"/>
+        </svg>
+        <svg t-elif="this.props.name === 'folder'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <svg t-elif="this.props.name === 'external-link'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        <svg t-elif="this.props.name === 'save'" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+        </svg>
+        <!-- fallback: generic file -->
+        <svg t-else="" t-att-class="this.iconClass" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+        </svg>
+    </t>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SHARED SUB-TEMPLATES
+     (Owl 3: no t-set parameters are passed into t-call, everything is read
+      from the calling component via "this")
+════════════════════════════════════════════════════════════════════════ -->
+
+    <t t-name="scanner_integration.CropEditor">
+        <!-- Cheque widget has no "pages" array, the PDF widget has one -->
+        <t t-set="chequeMode" t-value="!this.state.pages"/>
+        <div class="o_scn_editor border rounded overflow-hidden shadow o_scn_dark">
+
+            <div class="o_scn_bar o_scn_bar_top d-flex align-items-center justify-content-between gap-2 px-3 py-2">
+                <span class="fw-semibold">
+                    <ScannerIcon name="'crop'" cls="'me-1 text-primary'"/>
+                    <t t-if="chequeMode">Adjust Crop Area</t>
+                    <t t-elif="this.state.cropPageIdx === -1">Crop New Page</t>
+                    <t t-else="">Crop — Page <t t-out="this.state.cropPageIdx + 1"/></t>
+                </span>
+                <span class="d-flex align-items-center gap-3">
+                    <small t-if="this.state.cropInfo" class="o_scn_accent">
+                        <ScannerIcon name="'magic'" cls="'me-1'"/>
+                        <t t-out="this.state.cropInfo"/>
+                    </small>
+                    <small t-if="this.state.cropReady and this.cropDimensionsLabel" class="o_scn_dim font-monospace">
+                        <ScannerIcon name="'move'" cls="'me-1'"/>
+                        <t t-out="this.cropDimensionsLabel"/>
+                    </small>
+                    <small class="o_scn_muted d-none d-lg-inline">Drag the box to move · drag the handles to resize</small>
+                </span>
+            </div>
+
+            <div class="o_scn_stage overflow-auto">
+                <div class="o_scn_stage_inner">
+                    <img t-ref="this.cropImageRef"
+                         t-att-src="this.rawImageSrc"
+                         class="o_scn_crop_img"
+                         draggable="false"
+                         alt="Scan"
+                         t-on-load="this.onCropImageLoad"
+                         t-on-error="this.onCropImageError"/>
+
+                    <t t-if="this.state.cropReady">
+                        <t t-set="styles" t-value="this.cropStyles"/>
+                        <div class="o_scn_shade" t-att-style="styles.overlayTop"/>
+                        <div class="o_scn_shade" t-att-style="styles.overlayBottom"/>
+                        <div class="o_scn_shade" t-att-style="styles.overlayLeft"/>
+                        <div class="o_scn_shade" t-att-style="styles.overlayRight"/>
+
+                        <div class="o_scn_crop_box"
+                             t-att-style="styles.cropBox"
+                             t-on-pointerdown="this.onCropBoxPointerDown">
+                            <div class="o_scn_grid"/>
+                            <div class="o_scn_corner o_scn_corner_tl"/>
+                            <div class="o_scn_corner o_scn_corner_tr"/>
+                            <div class="o_scn_corner o_scn_corner_bl"/>
+                            <div class="o_scn_corner o_scn_corner_br"/>
+                            <t t-foreach="this.cropHandles" t-as="handle" t-key="handle.id">
+                                <div class="o_scn_handle"
+                                     t-att-style="this.getHandleStyle(handle)"
+                                     t-on-pointerdown="(ev) => this.onCropHandlePointerDown(ev, handle.id)"/>
+                            </t>
+                        </div>
+                    </t>
+                </div>
+            </div>
+
+            <div class="o_scn_bar o_scn_bar_bottom d-flex flex-wrap align-items-center gap-2 p-3">
+                <button type="button" class="btn btn-success"
+                        t-att-disabled="this.state.cropBusy or !this.state.cropReady"
+                        t-on-click="this.onApplyCrop">
+                    <span t-if="this.state.cropBusy" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"/>
+                    <ScannerIcon t-else="" name="'check'" cls="'me-1'"/>
+                    Apply Crop
+                </button>
+                <button type="button" class="btn btn-outline-light btn-sm"
+                        t-att-disabled="this.state.cropBusy"
+                        t-on-click="this.onUseFullImage">
+                    <ScannerIcon name="'expand'" cls="'me-1'"/>Use Full Image
+                </button>
+                <button type="button" class="btn btn-outline-info btn-sm"
+                        title="Detect the document edges (works on white and black scanner backgrounds)"
+                        t-att-disabled="this.state.cropBusy or !this.state.cropReady"
+                        t-on-click="this.onAutoDetect">
+                    <ScannerIcon name="'magic'" cls="'me-1'"/>Auto-detect
+                </button>
+                <div class="d-flex gap-1 ms-2 ps-2 o_scn_sep">
+                    <button type="button" class="btn btn-sm o_scn_btn_dark"
+                            title="Rotate 90° counter-clockwise"
+                            t-att-disabled="this.state.cropBusy"
+                            t-on-click="this.onRotateLeft">
+                        <ScannerIcon name="'rotate-left'" cls="'me-1'"/>Rotate Left
+                    </button>
+                    <button type="button" class="btn btn-sm o_scn_btn_dark"
+                            title="Rotate 90° clockwise"
+                            t-att-disabled="this.state.cropBusy"
+                            t-on-click="this.onRotateRight">
+                        <ScannerIcon name="'rotate-right'" cls="'me-1'"/>Rotate Right
+                    </button>
+                </div>
+                <button type="button" class="btn btn-outline-danger btn-sm ms-auto"
+                        t-att-disabled="this.state.cropBusy"
+                        t-on-click="this.onCancelCrop">
+                    <ScannerIcon name="'x'" cls="'me-1'"/>Discard
+                </button>
+            </div>
+        </div>
+    </t>
+
+    <t t-name="scanner_integration.BridgeStatus">
+        <span class="ms-auto d-flex align-items-center gap-1">
+            <ScannerIcon name="'dot'"
+                         cls="this.state.bridgeStatus === 'connected' ? 'text-success' : this.state.bridgeStatus === 'disconnected' ? 'text-danger' : 'text-muted'"/>
+            <small class="text-muted">
+                Bridge
+                <t t-if="this.state.bridgeStatus === 'connected'">ready</t>
+                <t t-elif="this.state.bridgeStatus === 'disconnected'">offline</t>
+                <t t-else="">…</t>
+            </small>
+            <button t-if="this.state.bridgeStatus === 'disconnected'"
+                    type="button" class="btn btn-link btn-sm p-0 ms-1"
+                    title="Retry connection" t-on-click="this.onRetryBridge">
+                <ScannerIcon name="'refresh'"/>
+            </button>
+        </span>
+    </t>
+
+    <t t-name="scanner_integration.Messages">
+        <t t-set="issue" t-value="this.state.scanIssue"/>
+        <div t-if="issue"
+             t-attf-class="alert {{ issue.level === 'danger' ? 'alert-danger' : 'alert-warning' }} py-2 px-3 mb-0 small o_scn_issue">
+            <div class="d-flex gap-2">
+                <ScannerIcon name="'warning'" cls="'o_scn_ico_2x mt-1'"/>
+                <div class="flex-grow-1">
+                    <div class="fw-bold"><t t-out="issue.title"/></div>
+                    <div class="o_scn_prewrap"><t t-out="issue.body"/></div>
+                    <div t-if="issue.pagesDone" class="mt-1">
+                        <ScannerIcon name="'check'" cls="'text-success me-1'"/>
+                        <t t-out="issue.pagesDone"/> page(s) received before the stop were kept.
+                    </div>
+                    <small t-if="issue.detail" class="text-muted d-block mt-1 o_scn_prewrap">
+                        <t t-out="issue.detail"/>
+                    </small>
+                    <div class="d-flex gap-2 mt-2">
+                        <button t-if="issue.resumable" type="button" class="btn btn-sm btn-primary"
+                                t-att-disabled="this.isBusy" t-on-click="this.onResumeScan">
+                            <ScannerIcon name="'play'" cls="'me-1'"/>
+                            <t t-out="issue.resumeLabel"/>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" t-on-click="this.onDismissIssue">
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div t-if="this.showStatusAlert"
+             class="alert alert-success py-1 px-2 mb-0 small d-flex align-items-center gap-1">
+            <ScannerIcon name="'check-circle'"/>
+            <t t-out="this.state.statusMsg"/>
+        </div>
+        <div t-if="this.state.errorMsg" class="alert alert-danger py-1 px-2 mb-0 small d-flex gap-2">
+            <ScannerIcon name="'warning'" cls="'mt-1'"/>
+            <div class="flex-grow-1">
+                <span class="o_scn_prewrap" t-out="this.state.errorMsg"/>
+                <t t-if="this.state.bridgeStatus === 'disconnected'">
+                    <br/>
+                    <small class="text-muted">Run <code>python scanner_bridge.py</code> on this workstation.</small>
+                </t>
+            </div>
+            <button type="button" class="btn-close btn-sm" title="Dismiss" t-on-click="this.onDismissError"/>
+        </div>
+    </t>
+
+<!-- Full-screen preview (opened through the dialog service) -->
+    <t t-name="scanner_integration.PreviewDialog">
+        <Dialog size="'fs'" title="this.props.name" bodyClass="'p-0 o_scn_preview_dialog_body'">
+            <div class="o_scn_preview_dialog_stage">
+                <iframe t-if="this.props.isPdf"
+                        t-att-src="this.props.url"
+                        title="PDF Preview"
+                        class="o_scn_preview_dialog_frame"/>
+                <img t-else=""
+                     t-att-src="this.props.url"
+                     alt="Preview"
+                     class="o_scn_preview_dialog_img"/>
+            </div>
+            <t t-set-slot="footer">
+                <a class="btn btn-primary" t-att-href="this.props.downloadUrl">
+                    <ScannerIcon name="'download'" cls="'me-1'"/>Download
+                </a>
+                <a class="btn btn-secondary" t-att-href="this.props.url" target="_blank" rel="noopener">
+                    <ScannerIcon name="'external-link'" cls="'me-1'"/>Open in new tab
+                </a>
+                <button type="button" class="btn btn-light ms-auto" t-on-click="() => this.props.close()">
+                    Close
+                </button>
+            </t>
+        </Dialog>
+    </t>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     1.  CHEQUE IMAGE WIDGET
+════════════════════════════════════════════════════════════════════════ -->
+    <t t-name="scanner_integration.ScannerImageField">
+        <div class="o_scanner_field o_scanner_image_field d-flex flex-column gap-2">
+
+            <t t-if="this.state.showCropper">
+                <t t-call="scanner_integration.CropEditor"/>
+            </t>
+            <t t-else="">
+                <div class="border rounded overflow-hidden bg-light d-flex align-items-center justify-content-center o_scn_preview_box">
+                    <t t-set="src" t-value="this.imageSrc"/>
+                    <img t-if="src" t-att-src="src" class="img-fluid o_scn_preview_img" alt="Cheque image"/>
+                    <div t-else="" class="text-center text-muted p-4">
+                        <ScannerIcon name="'image'" cls="'o_scn_ico_3x mb-2 d-block mx-auto'"/>
+                        <small>No cheque image</small>
+                    </div>
+                </div>
+            </t>
+
+            <t t-if="!this.isReadonly and !this.state.showCropper">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-primary btn-sm"
+                            t-att-disabled="this.isBusy" t-on-click="this.onScanClick">
+                        <t t-if="this.state.scanning">
+                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"/>
+                            <t t-out="this.scanBusyLabel"/>
+                        </t>
+                        <t t-else="">
+                            <ScannerIcon name="'print'" cls="'me-1'"/>Scan from Scanner
+                        </t>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            t-att-disabled="this.isBusy" t-on-click="this.onUploadClick">
+                        <ScannerIcon name="'upload'" cls="'me-1'"/>Upload Image
+                    </button>
+                    <button t-if="this.hasValue" type="button" class="btn btn-outline-danger btn-sm"
+                            t-att-disabled="this.isBusy" t-on-click="this.onClearClick">
+                        <ScannerIcon name="'trash'" cls="'me-1'"/>Clear
+                    </button>
+                    <t t-call="scanner_integration.BridgeStatus"/>
+                </div>
+                <input type="file" t-ref="this.fileInputRef" accept="image/*" class="d-none"
+                       t-on-change="this.onFileChange"/>
+                <t t-call="scanner_integration.Messages"/>
+            </t>
+        </div>
+    </t>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     2.  PDF DOCUMENT SCANNER WIDGET
+════════════════════════════════════════════════════════════════════════ -->
+    <t t-name="scanner_integration.ScannerPdfField">
+        <div class="o_scanner_field o_scanner_pdf_field d-flex flex-column gap-2">
+
+            <t t-if="this.state.showCropper">
+                <t t-call="scanner_integration.CropEditor"/>
+            </t>
+
+            <t t-else="">
+                <t t-set="attachments" t-value="this.currentAttachments"/>
+
+                <!-- Saved documents -->
+                <div t-if="attachments.length" class="border rounded overflow-hidden o_scn_dark o_scn_border">
+                    <div class="o_scn_bar o_scn_bar_top d-flex align-items-center px-3 py-2">
+                        <ScannerIcon name="'paperclip'" cls="'me-2 o_scn_accent'"/>
+                        <span class="fw-semibold small">
+                            <t t-out="attachments.length"/>
+                            <t t-if="attachments.length === 1"> saved document</t>
+                            <t t-else=""> saved documents</t>
+                        </span>
+                    </div>
+                    <div class="d-flex flex-column gap-1 p-3">
+                        <t t-foreach="attachments" t-as="att" t-key="att.id">
+                            <t t-set="attKind" t-value="(att.iconClass || '').includes('pdf') ? 'pdf' : (att.iconClass || '').includes('image') ? 'image' : 'file'"/>
+                            <div class="o_scn_att_row d-flex align-items-center gap-2">
+                                <ScannerIcon name="attKind === 'pdf' ? 'file-pdf' : attKind === 'image' ? 'file-image' : 'file'"
+                                             cls="'o_scn_ico_lg o_scn_att_icon o_scn_att_icon_' + attKind"/>
+                                <span class="o_scn_att_idx font-monospace"><t t-out="att_index + 1"/></span>
+                                <span class="o_scn_att_name" t-att-title="att.name"><t t-out="att.name"/></span>
+                                <span class="o_scn_att_date font-monospace" title="Upload date"><t t-out="att.dateLabel"/></span>
+                                <button t-if="att.canPreview" type="button" title="Preview (full screen)"
+                                        class="o_scn_icon_btn o_scn_icon_preview"
+                                        t-on-click="() => this.onPreviewAttachment(att)">
+                                    <ScannerIcon name="'eye'"/>
+                                </button>
+                                <a t-attf-href="/web/content/{{ att.id }}?download=true"
+                                   title="Download" class="o_scn_icon_btn o_scn_icon_download">
+                                    <ScannerIcon name="'download'"/>
+                                </a>
+                                <button t-if="!this.isReadonly" type="button" title="Remove from record"
+                                        class="o_scn_icon_btn o_scn_icon_remove"
+                                        t-att-disabled="this.isBusy"
+                                        t-on-click="() => this.onRemoveAttachment(att.id)">
+                                    <ScannerIcon name="'trash'"/>
+                                </button>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+
+                <!-- Pending pages -->
+                <div t-if="this.state.pages.length" class="border rounded overflow-hidden o_scn_dark o_scn_border">
+                    <div class="o_scn_bar o_scn_bar_top d-flex align-items-center px-3 py-2">
+                        <ScannerIcon name="'copy'" cls="'me-2 o_scn_accent'"/>
+                        <span class="fw-semibold small">
+                            <t t-out="this.state.pages.length"/>
+                            <t t-if="this.state.pages.length === 1"> page</t>
+                            <t t-else=""> pages</t>
+                            <t t-if="this.state.scanning and this.state.scanSource === 'adf'"> — receiving…</t>
+                            <t t-else=""> — ready to save as PDF</t>
+                        </span>
+                        <small class="ms-auto o_scn_muted">Click a thumbnail to crop</small>
+                    </div>
+                    <div class="d-flex flex-wrap gap-3 p-3 o_scn_pages">
+                        <t t-foreach="this.state.pages" t-as="page" t-key="page.id">
+                            <div class="d-flex flex-column gap-1 o_scn_page">
+                                <div class="o_scn_thumb position-relative border rounded overflow-hidden"
+                                     title="Click to crop this page"
+                                     t-on-click="() => this.onCropPage(page_index)">
+                                    <img t-if="page.thumb"
+                                         t-att-src="'data:image/jpeg;base64,' + page.thumb"
+                                         class="w-100 h-100 o_scn_contain"
+                                         t-att-alt="'#' + (page_index + 1)"/>
+                                    <div t-else="" class="w-100 h-100 d-flex align-items-center justify-content-center text-white-50">
+                                        <ScannerIcon name="'file-image'" cls="'o_scn_ico_2x'"/>
+                                    </div>
+                                    <div class="o_scn_page_no position-absolute top-0 start-0 m-1 px-1 rounded font-monospace">
+                                        <t t-out="page_index + 1"/>
+                                    </div>
+                                    <div class="o_scn_thumb_hover position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center">
+                                        <ScannerIcon name="'crop'" cls="'o_scn_ico_lg text-white'"/>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-1">
+                                    <button type="button" class="btn p-0 flex-grow-1 o_scn_page_btn" title="Move left"
+                                            t-att-disabled="page_index === 0 or this.isBusy"
+                                            t-on-click="() => this.onMovePage(page_index, -1)">&#9664;</button>
+                                    <button type="button" class="btn p-0 flex-grow-1 o_scn_page_btn o_scn_page_btn_danger"
+                                            title="Remove page" t-att-disabled="this.isBusy"
+                                            t-on-click="() => this.onRemovePage(page_index)">&#x2715;</button>
+                                    <button type="button" class="btn p-0 flex-grow-1 o_scn_page_btn" title="Move right"
+                                            t-att-disabled="page_index === this.state.pages.length - 1 or this.isBusy"
+                                            t-on-click="() => this.onMovePage(page_index, 1)">&#9654;</button>
+                                </div>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+
+                <!-- Empty state -->
+                <div t-if="!this.state.pages.length and !attachments.length"
+                     class="border rounded d-flex align-items-center justify-content-center o_scn_empty">
+                    <div class="text-center text-muted p-4">
+                        <ScannerIcon name="'file-pdf'" cls="'o_scn_ico_3x mb-2 d-block mx-auto o_scn_empty_icon'"/>
+                        <small>No document yet — scan pages, upload images to build a PDF, or upload a file directly</small>
+                    </div>
+                </div>
+            </t>
+
+            <!-- Toolbar -->
+            <t t-if="!this.isReadonly and !this.state.showCropper">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-primary btn-sm"
+                            t-att-disabled="this.isBusy" t-on-click="this.onScanFlatbed">
+                        <t t-if="this.state.scanning and this.state.scanSource === 'flatbed'">
+                            <span class="spinner-border spinner-border-sm me-1" role="status"/>
+                            <t t-out="this.scanBusyLabel"/>
+                        </t>
+                        <t t-else="">
+                            <ScannerIcon name="'print'" cls="'me-1'"/>Add Page
+                        </t>
+                    </button>
+
+                    <button type="button" class="btn btn-sm text-white o_scn_btn_adf"
+                            t-att-disabled="this.isBusy" t-on-click="this.onScanAdf">
+                        <t t-if="this.state.scanning and this.state.scanSource === 'adf'">
+                            <span class="spinner-border spinner-border-sm me-1" role="status"/>
+                            <t t-out="this.adfBusyLabel"/>
+                            <span t-if="this.state.adfReceived" class="badge bg-light text-dark ms-1">
+                                <t t-out="this.state.adfReceived"/>
+                            </span>
+                        </t>
+                        <t t-else="">
+                            <ScannerIcon name="'copy'" cls="'me-1'"/>Scan All (ADF)
+                        </t>
+                    </button>
+
+                    <button t-if="this.state.scanning and this.state.scanSource === 'adf'"
+                            type="button" class="btn btn-outline-danger btn-sm"
+                            title="Stop the feeder after the current page"
+                            t-att-disabled="!this.state.scanJobId or this.state.stopRequested"
+                            t-on-click="this.onStopScan">
+                        <ScannerIcon name="'stop'" cls="'me-1'"/>Stop
+                    </button>
+
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            t-att-disabled="this.isBusy" t-on-click="this.onUploadClick">
+                        <t t-if="this.state.importing">
+                            <span class="spinner-border spinner-border-sm me-1" role="status"/>Adding…
+                        </t>
+                        <t t-else="">
+                            <ScannerIcon name="'image'" cls="'me-1'"/>Images
+                        </t>
+                    </button>
+
+                    <button type="button" class="btn btn-sm text-white o_scn_btn_upload"
+                            t-att-disabled="this.isBusy" t-on-click="this.onDirectUploadClick">
+                        <t t-if="this.state.uploading">
+                            <span class="spinner-border spinner-border-sm me-1" role="status"/>
+                            <t t-out="this.uploadBusyLabel"/>
+                        </t>
+                        <t t-else="">
+                            <ScannerIcon name="'upload'" cls="'me-1'"/>Upload File
+                        </t>
+                    </button>
+
+                    <t t-if="this.state.pages.length">
+                        <button type="button" class="btn btn-success btn-sm"
+                                t-att-disabled="this.isBusy" t-on-click="this.onSavePdf">
+                            <t t-if="this.state.saving">
+                                <span class="spinner-border spinner-border-sm me-1" role="status"/>Saving…
+                            </t>
+                            <t t-else="">
+                                <ScannerIcon name="'file-pdf'" cls="'me-1'"/>Save as PDF
+                                <span class="badge bg-light text-success ms-1"><t t-out="this.state.pages.length"/>p</span>
+                            </t>
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm"
+                                t-att-disabled="this.isBusy" t-on-click="this.onClearPages">
+                            <ScannerIcon name="'trash'" cls="'me-1'"/>Clear
+                        </button>
+                    </t>
+
+                    <t t-call="scanner_integration.BridgeStatus"/>
+                </div>
+
+                <input type="file" t-ref="this.fileInputRef" accept="image/*" multiple="multiple"
+                       class="d-none" t-on-change="this.onFileChange"/>
+                <input type="file" t-ref="this.fileDirectRef" multiple="multiple"
+                       class="d-none" t-on-change="this.onDirectFileChange"/>
+
+                <t t-call="scanner_integration.Messages"/>
+            </t>
+
+            <!-- Scanner picker -->
+            <t t-if="this.state.showScannerDialog">
+                <t t-set="opts" t-value="this.state.adfOptions"/>
+                <div class="o_scn_modal_backdrop" t-on-click="this.onScannerCancel"/>
+                <div class="o_scn_modal o_scn_picker">
+                    <h5 class="mb-3 fw-semibold d-flex align-items-center">
+                        <ScannerIcon name="'print'" cls="'me-2 text-primary'"/>
+                        <t t-if="this.state.pendingScanAction === 'adf'">Scan All — Select Scanner</t>
+                        <t t-else="">Add Page — Select Scanner</t>
+                        <button type="button" class="btn btn-link btn-sm ms-auto" title="Search again"
+                                t-att-disabled="this.state.loadingScanners" t-on-click="this.onRefreshScanners">
+                            <ScannerIcon name="'refresh'" cls="this.state.loadingScanners ? 'o_scn_spin' : ''"/>
+                        </button>
+                    </h5>
+
+                    <div t-if="this.state.pendingScanAction === 'adf'" class="o_scn_options border rounded p-2 mb-3">
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <label class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox"
+                                           t-att-checked="opts.duplex"
+                                           t-on-change="(ev) => this.onAdfOptionChange('duplex', ev)"/>
+                                    <span class="form-check-label">Duplex (both sides)</span>
+                                </label>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox"
+                                           t-att-checked="opts.doubleFeed"
+                                           t-on-change="(ev) => this.onAdfOptionChange('doubleFeed', ev)"/>
+                                    <span class="form-check-label">Double-feed detection</span>
+                                </label>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox"
+                                           t-att-checked="opts.skipBlank"
+                                           t-on-change="(ev) => this.onAdfOptionChange('skipBlank', ev)"/>
+                                    <span class="form-check-label">Remove blank pages</span>
+                                </label>
+                            </div>
+                            <div class="col-sm-6" t-if="opts.skipBlank">
+                                <select class="form-select form-select-sm"
+                                        t-on-change="(ev) => this.onAdfOptionChange('blankSensitivity', ev)">
+                                    <option value="low" t-att-selected="opts.blankSensitivity === 'low'">Sensitivity: low (keep more)</option>
+                                    <option value="normal" t-att-selected="opts.blankSensitivity === 'normal'">Sensitivity: normal</option>
+                                    <option value="high" t-att-selected="opts.blankSensitivity === 'high'">Sensitivity: high (remove more)</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox"
+                                           t-att-checked="opts.imprintEnabled"
+                                           t-on-change="(ev) => this.onAdfOptionChange('imprintEnabled', ev)"/>
+                                    <span class="form-check-label">Imprint / endorse pages</span>
+                                </label>
+                            </div>
+                            <t t-if="opts.imprintEnabled">
+                                <div class="col-sm-7">
+                                    <input type="text" class="form-control form-control-sm"
+                                           placeholder="{date} ODOO {counter}"
+                                           title="Imprint text"
+                                           t-att-value="opts.imprintText"
+                                           t-on-input="(ev) => this.onAdfOptionChange('imprintText', ev)"/>
+                                </div>
+                                <div class="col-sm-3">
+                                    <input type="number" min="0" class="form-control form-control-sm"
+                                           title="Counter start"
+                                           t-att-value="opts.imprintStart"
+                                           t-on-change="(ev) => this.onAdfOptionChange('imprintStart', ev)"/>
+                                </div>
+                                <div class="col-sm-2">
+                                    <input type="number" min="1" max="8" class="form-control form-control-sm"
+                                           title="Counter digits"
+                                           t-att-value="opts.imprintDigits"
+                                           t-on-change="(ev) => this.onAdfOptionChange('imprintDigits', ev)"/>
+                                </div>
+                                <div class="col-sm-6">
+                                    <select class="form-select form-select-sm"
+                                            t-on-change="(ev) => this.onAdfOptionChange('imprintMode', ev)">
+                                        <option value="auto" t-att-selected="opts.imprintMode === 'auto'">Scanner imprinter, else digital stamp</option>
+                                        <option value="hardware" t-att-selected="opts.imprintMode === 'hardware'">Scanner imprinter only</option>
+                                        <option value="digital" t-att-selected="opts.imprintMode === 'digital'">Digital stamp only</option>
+                                    </select>
+                                </div>
+                                <div class="col-sm-6">
+                                    <select class="form-select form-select-sm"
+                                            t-on-change="(ev) => this.onAdfOptionChange('imprintPosition', ev)">
+                                        <option value="top" t-att-selected="opts.imprintPosition === 'top'">Digital stamp: top right</option>
+                                        <option value="bottom" t-att-selected="opts.imprintPosition === 'bottom'">Digital stamp: bottom right</option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <small class="text-muted">
+                                        Placeholders: <code>{counter}</code> <code>{date}</code> — preview:
+                                        <span class="font-monospace text-danger" t-out="this.imprintPreview"/>
+                                    </small>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+
+                    <div class="list-group mb-3 o_scn_scanner_list">
+                        <button type="button"
+                                class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                                t-on-click="() => this.onScannerConfirm(null)">
+                            <ScannerIcon name="'star'" cls="'text-warning'"/>
+                            <div>
+                                <div class="fw-semibold">Default Scanner</div>
+                                <small class="text-muted">Use the first available device</small>
+                            </div>
+                        </button>
+
+                        <div t-if="this.state.loadingScanners" class="list-group-item d-flex align-items-center gap-2 text-muted">
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"/>
+                            <span>Detecting available scanners… (this can take up to a minute)</span>
+                        </div>
+
+                        <t t-foreach="this.state.availableScanners" t-as="scanner" t-key="scanner_index">
+                            <button type="button"
+                                    class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                                    t-on-click="() => this.onScannerConfirm(scanner)">
+                                <ScannerIcon name="scanner.source === 'inbox' ? 'folder' : 'print'"
+                                             cls="scanner.source === 'inbox' ? 'text-info' : scanner.ready === false ? 'text-muted' : 'text-secondary'"/>
+                                <div class="text-truncate">
+                                    <div class="fw-semibold text-truncate">
+                                        <t t-out="scanner.display or scanner.name"/>
+                                        <span t-if="scanner.source === 'inbox'" class="badge text-bg-info ms-1">inbox</span>
+                                        <span t-elif="scanner.ready === false" class="badge text-bg-warning ms-1">unverified</span>
+                                    </div>
+                                    <small class="text-muted font-monospace d-block text-truncate" t-att-title="scanner.name">
+                                        <t t-out="scanner.name"/>
+                                    </small>
+                                    <small t-if="scanner.note" class="text-muted fst-italic d-block text-wrap">
+                                        <t t-out="scanner.note"/>
+                                    </small>
+                                </div>
+                            </button>
+                        </t>
+
+                        <div t-if="!this.state.loadingScanners and !this.state.availableScanners.length and !this.state.scannerListError"
+                             class="list-group-item text-muted fst-italic">
+                            <ScannerIcon name="'info'" cls="'me-1'"/>No additional scanners detected — Default will be used.
+                        </div>
+                        <div t-if="this.state.scannerListError" class="list-group-item text-danger small">
+                            <ScannerIcon name="'warning'" cls="'me-1'"/>
+                            <t t-out="this.state.scannerListError"/>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-secondary" t-on-click="this.onScannerCancel">Cancel</button>
+                    </div>
+                </div>
+            </t>
+
+            <!-- Filename dialog -->
+            <t t-if="this.state.showFilenameDialog">
+                <div class="o_scn_modal_backdrop" t-on-click="this.onFilenameCancel"/>
+                <div class="o_scn_modal o_scn_filename_dialog">
+                    <h5 class="mb-3 fw-semibold">
+                        <ScannerIcon name="'file-pdf'" cls="'me-2 text-danger'"/>Save as PDF
+                    </h5>
+                    <label class="form-label">File name</label>
+                    <div class="input-group mb-1">
+                        <input type="text"
+                               class="form-control"
+                               t-ref="this.filenameInputRef"
+                               t-att-value="this.state.pendingFilename"
+                               t-on-input="this.onFilenameInput"
+                               t-on-keydown="this.onFilenameKeydown"
+                               placeholder="e.g. Invoice_2024"/>
+                        <span class="input-group-text text-muted">.pdf</span>
+                    </div>
+                    <div class="form-text text-muted mb-4">
+                        The <code>.pdf</code> extension is added automatically.
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn btn-secondary" t-on-click="this.onFilenameCancel">Cancel</button>
+                        <button type="button" class="btn btn-success"
+                                t-att-disabled="!this.state.pendingFilename.trim()"
+                                t-on-click="this.onFilenameConfirm">
+                            <ScannerIcon name="'save'" cls="'me-1'"/>Save PDF
+                        </button>
+                    </div>
+                </div>
+            </t>
+
+        </div>
+    </t>
+
+</templates>
