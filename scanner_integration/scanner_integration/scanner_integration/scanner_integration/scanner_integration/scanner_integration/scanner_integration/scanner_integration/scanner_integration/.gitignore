@@ -1,9 +1,0 @@
-# Ignore Odoo core
-__pycache__/
-*.pyc
-*.pyo
-*.exe
-*.bin
-.DS_Store
-.idea/
-*.log
