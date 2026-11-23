@@ -15,7 +15,7 @@ Key Features
 - Auto-crop, manual crop, multi-page ADF scanning
 - Build multi-page PDFs from scanned pages, all inside Odoo
 - 100 %% local — zero cloud dependency, zero data leaves your network
-- Native OWL 2 widget — integrates seamlessly with Odoo 19 backend views
+- Native OWL 2 widget — integrates seamlessly with Odoo 20 backend views
 - Companion Python bridge: cheque_scanner_bridge.py (included)
 
 Supported Platforms
